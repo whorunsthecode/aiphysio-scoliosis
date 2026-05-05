@@ -50,26 +50,27 @@ export async function saveProfile(state: OnboardingState): Promise<SaveResult> {
     return { ok: true, backend: "localStorage" };
   }
 
+  // Route saves through a server endpoint that uses the service_role key.
+  // The browser anon key intentionally has no write access to profiles —
+  // RLS-by-default + we only granted public-schema writes to service_role.
   try {
-    const { getBrowserSupabase } = await import("@/lib/db");
-    const supabase = getBrowserSupabase();
-    const row = toProfileRow(state);
-    const { data, error } = await supabase
-      .from("profiles")
-      .insert(row)
-      .select("id")
-      .single();
-    if (error) throw error;
-
-    if (state.physioProgram.rawText.trim() && data?.id) {
-      await supabase.from("physio_programs").insert({
-        profile_id: data.id,
-        raw_source: state.physioProgram.rawText,
-        parsed_exercises: [],
-      });
+    const res = await fetch("/api/profile/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state),
+    });
+    const body = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      profileId?: string;
+      error?: string;
+    };
+    if (!res.ok || !body.ok) {
+      return {
+        ok: false,
+        error: body.error ?? `Profile save returned ${res.status}`,
+      };
     }
-
-    return { ok: true, backend: "supabase", profileId: data?.id };
+    return { ok: true, backend: "supabase", profileId: body.profileId };
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     return { ok: false, error: message };
