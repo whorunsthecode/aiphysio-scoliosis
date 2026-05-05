@@ -3,13 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowLeft,
   ArrowRight,
   Calendar,
   Heart,
   Sparkles,
   TrendingUp,
 } from "lucide-react";
+import { AppShell } from "@/components/AppShell";
 import { Heading } from "@/components/ui/Heading";
 import { SectionLabel } from "@/components/ui/SectionLabel";
 import { Card } from "@/components/ui/Card";
@@ -94,18 +94,9 @@ export default function ProgressPage() {
   const drifting = trends.filter((t) => t.series.direction === "drifting");
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-12 lg:px-12 lg:py-16 space-y-12">
-      <header className="space-y-3">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 text-[13px] text-ink-secondary transition-colors hover:text-ink-primary"
-        >
-          <ArrowLeft size={14} strokeWidth={1.5} /> Home
-        </Link>
-        <SectionLabel>
-          Longitudinal posture · {sessions.length} session
-          {sessions.length === 1 ? "" : "s"} on file
-        </SectionLabel>
+    <AppShell>
+    <main className="mx-auto max-w-5xl px-6 py-12 lg:px-12 lg:py-16 space-y-12">
+      <header className="space-y-2">
         <Heading level={1}>Progress</Heading>
         <p className="max-w-2xl text-ink-secondary">
           What&rsquo;s shifting over time, weighted by how confident each scan
@@ -364,6 +355,7 @@ export default function ProgressPage() {
         ) : null}
       </Card>
     </main>
+    </AppShell>
   );
 }
 

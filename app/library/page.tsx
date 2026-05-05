@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowLeft,
   ArrowRight,
   CheckCircle2,
   Filter,
@@ -11,6 +10,7 @@ import {
   Play,
   ShieldAlert,
 } from "lucide-react";
+import { AppShell } from "@/components/AppShell";
 import { Heading } from "@/components/ui/Heading";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
@@ -109,15 +109,12 @@ export default function LibraryPage() {
   }, [category, tier]);
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-12 lg:px-12 lg:py-16 space-y-12">
-      <header className="space-y-3">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 text-[13px] text-ink-secondary transition-colors hover:text-ink-primary"
-        >
-          <ArrowLeft size={14} strokeWidth={1.5} /> Home
-        </Link>
-        <SectionLabel>Curated movement · 17 exercises · 5 tiers</SectionLabel>
+    <AppShell>
+    <main className="mx-auto max-w-5xl px-6 py-12 lg:px-12 lg:py-16 space-y-12">
+      <header className="space-y-2">
+        <SectionLabel>
+          {EXERCISE_LIBRARY.length} exercises · asymmetric prescription
+        </SectionLabel>
         <Heading level={1}>Exercise library</Heading>
         <p className="max-w-2xl text-ink-secondary">
           Each exercise tagged with which curve patterns it helps, asymmetric
@@ -436,6 +433,7 @@ export default function LibraryPage() {
         </div>
       </section>
     </main>
+    </AppShell>
   );
 }
 

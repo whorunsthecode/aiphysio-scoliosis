@@ -12,7 +12,6 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
-  ArrowLeft,
   CalendarClock,
   CheckCircle2,
   Compass,
@@ -25,6 +24,7 @@ import {
   Users,
   Zap,
 } from "lucide-react";
+import { AppShell } from "@/components/AppShell";
 import { Card } from "@/components/ui/Card";
 import { Heading } from "@/components/ui/Heading";
 import { SectionLabel } from "@/components/ui/SectionLabel";
@@ -190,22 +190,15 @@ export default function CareTeamPage() {
   const pastDocs = state?.documents ?? [];
 
   return (
-    <main className="mx-auto max-w-6xl px-6 py-12 lg:px-12 lg:py-16 space-y-12">
-      <header className="space-y-3">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 text-[13px] text-ink-secondary transition-colors hover:text-ink-primary"
-        >
-          <ArrowLeft size={14} strokeWidth={1.5} /> Home
-        </Link>
-        <SectionLabel>Three agents · running on a schedule</SectionLabel>
+    <AppShell>
+    <main className="mx-auto max-w-5xl px-6 py-12 lg:px-12 lg:py-16 space-y-12">
+      <header className="space-y-2">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="space-y-1">
             <Heading level={1}>Care team</Heading>
             <p className="max-w-2xl text-ink-secondary">
-              Coach plans the week from your trends. Companion checks in
-              throughout the day. Liaison prepares the handoff for your physio.
-              All three read the same context.
+              Three agents watching, planning, and reporting — so your physio
+              gets the full picture.
             </p>
           </div>
           <Button
@@ -775,6 +768,7 @@ export default function CareTeamPage() {
         </>
       )}
     </main>
+    </AppShell>
   );
 }
 
