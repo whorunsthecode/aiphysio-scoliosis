@@ -1,0 +1,40 @@
+# Optional: every-2-hour Companion firing.
+#
+# Vercel Hobby caps crons at one fire/day. The Companion's spec cadence is
+# every 2h during waking hours (8am–10pm). This workflow restores that
+# cadence by hitting the same endpoint via GitHub Actions, which has
+# unlimited scheduled workflows on the free tier.
+#
+# To enable:
+#   1. In your GitHub repo: Settings → Secrets and variables → Actions
+#   2. Add two secrets:
+#        VERCEL_BASE_URL  → https://<your-project>.vercel.app
+#        CRON_SECRET      → same value you set in Vercel env
+#   3. Commit this file. The workflow appears under the Actions tab.
+#
+# To disable: comment out the `on.schedule` block (or delete this file).
+#
+# Note: GitHub Actions cron uses UTC. Schedule below covers waking hours
+# in Hong Kong time (UTC+8) → 0,2,4,6,8,10,12,14 UTC = 8am–10pm HKT.
+
+name: Companion every 2h (waking hours)
+
+on:
+  schedule:
+    - cron: "0 0,2,4,6,8,10,12,14 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  fire-companion:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/agents/companion
+        env:
+          BASE_URL: ${{ secrets.VERCEL_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl -sS -o response.json -w "HTTP %{http_code}\n" \
+            -X GET \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${BASE_URL}/api/agents/companion"
+          cat response.json
