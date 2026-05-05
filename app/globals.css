@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    background-color: #fbf7f2;
+    color: #2d2520;
+    font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: rgba(127, 167, 138, 0.18);
+    color: #2d2520;
+  }
+
+  *:focus-visible {
+    outline: none;
+  }
+}
+
+@layer utilities {
+  .font-numerals {
+    font-variant-numeric: tabular-nums;
+  }
+}

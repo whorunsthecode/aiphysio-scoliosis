@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    { "path": "/api/cron/baselines",     "schedule": "0 3 * * *" },
+    { "path": "/api/cron/correlations",  "schedule": "0 4 * * *" },
+    { "path": "/api/cron/cascade",       "schedule": "0 5 * * *" },
+    { "path": "/api/agents/coach",       "schedule": "0 12 * * 0" },
+    { "path": "/api/agents/companion",   "schedule": "0 0,2,4,6,8,10,12,14 * * *" }
+  ]
+}

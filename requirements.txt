@@ -1,0 +1,3 @@
+edge-tts==6.1.10
+weasyprint==60.2
+supabase==2.3.0
