@@ -11,6 +11,10 @@
 //   /appointment YYYY-MM-DD HH:MM  log an upcoming physio appointment
 //   /observations   last 7 days of marked observations
 //   /quiet 24       silence Companion nudges for N hours
+//   /profile        view current profile (curve, goal)
+//   /goal           view current goal
+//   /goal <text>    set/replace the goal Coach references in plan messages
+//   /help           list all commands
 
 import { NextResponse } from "next/server";
 import {
@@ -77,9 +81,38 @@ export async function POST(req: Request) {
         await setQuietHours(profileId, parseInt(rest[0] ?? "12", 10));
         break;
 
+      case "/profile":
+        await replyProfile(profileId);
+        break;
+
+      case "/goal":
+        if (rest.length === 0) {
+          await replyGoal(profileId);
+        } else {
+          await setGoal(profileId, rest.join(" "));
+        }
+        break;
+
+      case "/help":
+        await sendTelegramMessage(
+          [
+            "Commands:",
+            "/status — this week at a glance",
+            "/program — full weekly program",
+            "/replan — ask Coach to regenerate the week",
+            "/profile — your curve + goal on file",
+            "/goal — view your goal",
+            "/goal <text> — set/replace your goal",
+            "/observations — recent observations Companion marked",
+            "/appointment YYYY-MM-DD HH:MM — log a physio appointment",
+            "/quiet 12 — silence Companion nudges for N hours",
+          ].join("\n"),
+        );
+        break;
+
       default:
         await sendTelegramMessage(
-          "I didn't catch that. Try /status, /program, /replan, /appointment YYYY-MM-DD HH:MM, /observations, or /quiet 12.",
+          "I didn't catch that. Try /help to see what I can do.",
         );
     }
   } catch (e) {
@@ -252,6 +285,74 @@ async function replyObservations(profileId: string) {
     return `${when} (${o.observed_by_agent}): ${o.observation_text}`;
   });
   await sendTelegramMessage(`Recent observations\n\n${lines.join("\n\n")}`);
+}
+
+async function replyProfile(profileId: string) {
+  const supabase = getServiceSupabase();
+  const { data } = await supabase
+    .from("profiles")
+    .select(
+      "name, curve_type, primary_curve_apex, primary_curve_convex_side, secondary_curve_apex, secondary_curve_convex_side, goal_text",
+    )
+    .eq("id", profileId)
+    .single();
+  if (!data) {
+    await sendTelegramMessage("No profile on file yet.");
+    return;
+  }
+  const lines: string[] = [];
+  lines.push(`Profile · ${data.name}`);
+  lines.push("");
+  lines.push(`Curve: ${data.curve_type ?? "unknown"}`);
+  if (data.primary_curve_apex) {
+    lines.push(
+      `Primary: ${data.primary_curve_apex} · bulges ${data.primary_curve_convex_side ?? "?"}`,
+    );
+  }
+  if (data.secondary_curve_apex) {
+    lines.push(
+      `Secondary: ${data.secondary_curve_apex} · bulges ${data.secondary_curve_convex_side ?? "?"}`,
+    );
+  }
+  lines.push("");
+  if (data.goal_text) {
+    lines.push("Goal:");
+    lines.push(data.goal_text);
+  } else {
+    lines.push("Goal: (not set — use /goal <text> to add one)");
+  }
+  await sendTelegramMessage(lines.join("\n"));
+}
+
+async function replyGoal(profileId: string) {
+  const supabase = getServiceSupabase();
+  const { data } = await supabase
+    .from("profiles")
+    .select("goal_text")
+    .eq("id", profileId)
+    .single();
+  if (!data?.goal_text) {
+    await sendTelegramMessage(
+      "No goal set. Use /goal <text> to add one — e.g. /goal travel without my back being the limit",
+    );
+    return;
+  }
+  await sendTelegramMessage(`Your goal:\n\n${data.goal_text}`);
+}
+
+async function setGoal(profileId: string, text: string) {
+  const supabase = getServiceSupabase();
+  const { error } = await supabase
+    .from("profiles")
+    .update({ goal_text: text, updated_at: new Date().toISOString() })
+    .eq("id", profileId);
+  if (error) {
+    await sendTelegramMessage(`Couldn't save goal: ${error.message}`);
+    return;
+  }
+  await sendTelegramMessage(
+    `Saved. Coach will reference this on the next run:\n\n${text}`,
+  );
 }
 
 async function setQuietHours(profileId: string, hours: number) {
