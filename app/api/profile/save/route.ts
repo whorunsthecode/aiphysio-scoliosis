@@ -54,6 +54,10 @@ export async function POST(req: Request) {
     daily_sitting_hours: state.lifestyle.dailySittingHours,
     bag_carrying_side: state.lifestyle.bagCarryingSide,
     sleep_position: state.lifestyle.sleepPosition,
+    goal_text:
+      typeof (state as unknown as { goalText?: string }).goalText === "string"
+        ? (state as unknown as { goalText: string }).goalText
+        : null,
     updated_at: new Date().toISOString(),
   };
 

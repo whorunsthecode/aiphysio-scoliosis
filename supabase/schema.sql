@@ -259,6 +259,12 @@ create index if not exists notifications_recent
 alter table sessions add column if not exists source text default 'real';
 create index if not exists sessions_source on sessions(source);
 
+-- ─── User-stated goal (fed into Coach's prompt) ───
+-- Free-text field. The user describes what they want out of this in their
+-- own words ("travel without my back being the limit"); Coach references
+-- it when planning so the messaging stays connected to lived motivation.
+alter table profiles add column if not exists goal_text text;
+
 -- ─────────────────────────────────────────────────────────────────────────
 -- Grants
 -- ─────────────────────────────────────────────────────────────────────────

@@ -113,7 +113,11 @@ async function runCoach(req: Request, manual: boolean) {
   );
 
   // Telegram + Companion handoff + message-processing in parallel.
-  const sendResult = await sendTelegramMessage(output.telegram_message);
+  // Coach formats its messages with HTML tags (b, i, pre) per the prompt
+  // contract so Telegram renders the schedule as a monospace grid.
+  const sendResult = await sendTelegramMessage(output.telegram_message, {
+    parseMode: "HTML",
+  });
 
   await Promise.all([
     supabase.from("notifications").insert({

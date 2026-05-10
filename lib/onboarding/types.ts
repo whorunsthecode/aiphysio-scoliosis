@@ -22,6 +22,9 @@ export type PainPoint = {
 
 export type OnboardingState = {
   name: string;
+  // Free-text user-stated goal. What they actually want from this — used by
+  // Coach to thread the prescription back to lived motivation.
+  goalText?: string;
 
   curveType: CurveType | null;
   severity: Severity | null;

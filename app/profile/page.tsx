@@ -141,6 +141,19 @@ export default function ProfilePage() {
               />
             </div>
             <div className="space-y-1.5">
+              <SectionLabel>What do you want from this?</SectionLabel>
+              <Textarea
+                rows={3}
+                value={state.goalText ?? ""}
+                onChange={(e) => set("goalText", e.target.value)}
+                placeholder="e.g. travel without my back being the limit · feel less stiff in the morning · pick up things off the floor without thinking about it"
+              />
+              <p className="text-[12px] text-ink-tertiary">
+                Coach reads this and threads it into the weekly plan messages
+                so the suggestions stay tied to what you actually care about.
+              </p>
+            </div>
+            <div className="space-y-1.5">
               <SectionLabel>Prescription mode</SectionLabel>
               <div className="flex flex-wrap gap-2">
                 <Chip

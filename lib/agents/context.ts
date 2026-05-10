@@ -18,6 +18,7 @@ export type Profile = Record<string, unknown> & {
   secondary_curve_convex_side: string | null;
   one_sided_sport: string | null;
   daily_sitting_hours: string | null;
+  goal_text: string | null;
 };
 
 export type SessionContext = {
@@ -291,6 +292,10 @@ export function serializeContext(ctx: UserContext): unknown {
           secondary_curve_convex_side: ctx.profile.secondary_curve_convex_side,
           one_sided_sport: ctx.profile.one_sided_sport,
           daily_sitting_hours: ctx.profile.daily_sitting_hours,
+          // The user's stated goal in their own words. Coach uses this in
+          // the warm one-line "this is connected to what you actually want"
+          // hook in the Telegram message.
+          goal_text: ctx.profile.goal_text ?? null,
         }
       : null,
     physio_program: ctx.physioProgram
