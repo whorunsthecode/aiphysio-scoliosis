@@ -23,6 +23,7 @@ import {
   isSupabaseConfigured,
 } from "@/lib/agents/server-supabase";
 import { sendTelegramMessage, type TelegramUpdate } from "@/lib/telegram";
+import { handleConversation } from "@/lib/agents/conversation";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -111,9 +112,11 @@ export async function POST(req: Request) {
         break;
 
       default:
-        await sendTelegramMessage(
-          "I didn't catch that. Try /help to see what I can do.",
-        );
+        // Anything that doesn't start with a registered slash command
+        // becomes a free-text conversation. The handler routes through
+        // Groq with tool-use so the bot can log pain, log exercises,
+        // update goals, request replans, etc. — all from natural messages.
+        await handleFreeText(profileId, text);
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";
@@ -285,6 +288,32 @@ async function replyObservations(profileId: string) {
     return `${when} (${o.observed_by_agent}): ${o.observation_text}`;
   });
   await sendTelegramMessage(`Recent observations\n\n${lines.join("\n\n")}`);
+}
+
+async function handleFreeText(profileId: string, text: string) {
+  // Log all conversations into the notifications table for the /care-team
+  // view to render the chat thread.
+  const supabase = getServiceSupabase();
+  await supabase.from("notifications").insert({
+    profile_id: profileId,
+    sent_by_agent: "user",
+    message_text: text,
+  });
+
+  try {
+    const result = await handleConversation(profileId, text);
+    await sendTelegramMessage(result.reply);
+    await supabase.from("notifications").insert({
+      profile_id: profileId,
+      sent_by_agent: "companion",
+      message_text: result.reply,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    await sendTelegramMessage(
+      `Hit a snag replying — ${msg}. Slash commands still work; try /help.`,
+    );
+  }
 }
 
 async function replyProfile(profileId: string) {
