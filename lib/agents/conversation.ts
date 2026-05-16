@@ -125,32 +125,74 @@ export async function handleConversation(
   userMessage: string,
 ): Promise<ConversationResult> {
   const context = await buildContext(profileId, "companion");
-  const contextJson = JSON.stringify(serializeContext(context));
 
-  // Compact exercise pool the chat handler can suggest from, with the
-  // contraindicated-pain-region map the safety logic depends on.
+  // Compact context for chat — everything the conversation handler actually
+  // needs and nothing more. The full serialized context is for Coach +
+  // Liaison; chat doesn't need the cascade reasoning or 14d session list.
+  const recentPain: { location: string; intensity: number; type?: string; when: string }[] = [];
+  const recentExercises: { exerciseId: string; when: string }[] = [];
+  for (const s of context.recentSessions.slice(0, 5)) {
+    for (const p of s.pain_check ?? []) {
+      recentPain.push({
+        location: p.location,
+        intensity: p.intensity,
+        type: p.type,
+        when: s.started_at.slice(0, 10),
+      });
+    }
+    for (const e of s.exercises_completed ?? []) {
+      recentExercises.push({
+        exerciseId: e.exerciseId,
+        when: s.started_at.slice(0, 10),
+      });
+    }
+  }
+  const compactContext = {
+    name: context.profile?.name ?? null,
+    curve_pattern: context.profile?.curve_type ?? null,
+    primary_apex: context.profile?.primary_curve_apex ?? null,
+    primary_lean: context.profile?.primary_curve_convex_side ?? null,
+    secondary_apex: context.profile?.secondary_curve_apex ?? null,
+    secondary_lean: context.profile?.secondary_curve_convex_side ?? null,
+    goal_text: context.profile?.goal_text ?? null,
+    sessions_last_7d: context.adherence.sessionsLast7Days,
+    recent_pain_logs: recentPain.slice(0, 8),
+    recent_exercises: recentExercises.slice(0, 8),
+    top_correlations: context.correlations.slice(0, 3).map((c) => ({
+      subject: c.subject,
+      object: c.object,
+      lag_days: c.lag_days,
+      r: Number(c.correlation_strength.toFixed(2)),
+    })),
+  };
+
+  // Compact exercise pool — id, name, regions only. Description + tier are
+  // dead weight for chat; the LLM picks by id and the system renders the
+  // canonical name. Drops ~60% of pool tokens.
   const exercisePool = EXERCISE_LIBRARY.map((e) => ({
-    library_id: e.id,
+    id: e.id,
     name: e.name,
-    tier: e.tier,
-    category: e.category,
-    one_line: e.description,
-    contraindicated_pain_regions: e.loads_regions ?? [],
+    skip_if_pain_in: e.loads_regions ?? [],
   }));
   const hasPhysioProgram = !!context.physioProgram?.raw_source?.trim();
 
+  const heavyContext: GroqMessage = {
+    role: "system",
+    content:
+      `user_context: ${JSON.stringify(compactContext)}\n` +
+      `exercise_pool: ${JSON.stringify(exercisePool)}\n` +
+      `has_physio_program: ${hasPhysioProgram}`,
+  };
+
   const messages: GroqMessage[] = [
     { role: "system", content: CHAT_SYSTEM_PROMPT },
-    {
-      role: "system",
-      content: `User context (read-only, don't quote verbatim):\n${contextJson}`,
-    },
-    {
-      role: "system",
-      content: `exercise_pool:\n${JSON.stringify(exercisePool, null, 2)}\n\nhas_physio_program: ${hasPhysioProgram}`,
-    },
+    heavyContext,
     { role: "user", content: userMessage },
   ];
+
+  // Suppress the unused-import warning from the heavier serializer; we keep
+  // the import in case future tools want the full context shape.
+  void serializeContext;
 
   // First pass: model may emit tool_calls.
   const first = await chatWithTools({
@@ -191,12 +233,22 @@ export async function handleConversation(
       });
     }
 
-    // Second pass: model composes the user-facing reply now that tools have run.
+    // Second pass: drop the heavy reference content (we already used it
+    // to pick the tools). Keep only the conversational thread + a thin
+    // re-statement of the voice rules so the reply still lands in tone.
+    const lightSecondPassMessages: GroqMessage[] = [
+      {
+        role: "system",
+        content:
+          "You are mid-conversation. The tools have run. Now compose the final user-facing reply. Voice rules: warm, brief, one short empathetic line + end with the '<one tiny ask> + reply when done' shape. No exclamation marks, no 'must/should/have to', no clinical filler. Match the user's energy. If only acknowledgment is needed, a single short line is fine.",
+      },
+      { role: "user", content: userMessage },
+      ...messages.slice(-1 - first.tool_calls.length),
+    ];
     const second = await chatWithTools({
-      messages,
-      // No tools on the second pass — we want the final natural-language reply.
+      messages: lightSecondPassMessages,
       temperature: 0.5,
-      maxTokens: 400,
+      maxTokens: 250,
     });
 
     return {
