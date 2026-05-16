@@ -39,8 +39,18 @@ export const TOOL_DEFS: GroqToolDef[] = [
           },
           type: {
             type: "string",
-            description: "Quality of the pain.",
-            enum: ["sharp", "dull", "ache", "tingling"],
+            description:
+              "Quality of the pain or stiffness as the user described it.",
+            enum: [
+              "sharp",
+              "dull",
+              "ache",
+              "tingling",
+              "stiffness",
+              "tightness",
+              "soreness",
+              "burning",
+            ],
           },
         },
         required: ["location", "intensity"],

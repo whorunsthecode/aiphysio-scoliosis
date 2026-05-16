@@ -17,7 +17,18 @@ export type PainPoint = {
   id: string;
   location: string;
   intensity: number; // 0-10
-  type: "sharp" | "dull" | "ache" | "tingling";
+  // Conversational pain descriptors. Onboarding UI shows the first four as
+  // chips; the chat handler accepts the wider set since people text "stiff"
+  // / "sore" / "tight" naturally.
+  type:
+    | "sharp"
+    | "dull"
+    | "ache"
+    | "tingling"
+    | "stiffness"
+    | "tightness"
+    | "soreness"
+    | "burning";
 };
 
 export type OnboardingState = {
