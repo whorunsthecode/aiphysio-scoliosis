@@ -118,6 +118,65 @@ export const TOOL_DEFS: GroqToolDef[] = [
   {
     type: "function",
     function: {
+      name: "suggest_exercise",
+      description:
+        "Commit to suggesting a specific library exercise from exercise_pool. Use this only in Mode A (physio program on file) and only when the exercise's contraindicated_pain_regions don't overlap with reported pain. The system renders the canonical exercise name in the user's reply. For safe micro-movements (cat-cow, supine figure-4, chin tucks, etc.), don't call this — just describe in plain text.",
+      parameters: {
+        type: "object",
+        properties: {
+          exercise_id: {
+            type: "string",
+            description:
+              "Exact library_id from exercise_pool (e.g. 'hip_bridge_pelvic_press_down').",
+          },
+          duration_or_reps: {
+            type: "string",
+            description:
+              "How much. e.g. '3 sets of 10', '30 seconds per side', '10 slow breaths'.",
+          },
+          why_one_line: {
+            type: "string",
+            description:
+              "One short reason tied to her current state, in your voice.",
+          },
+        },
+        required: ["exercise_id", "duration_or_reps"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "flag_safety",
+      description:
+        "FIRES WHEN A SAFETY-FLOOR TRIGGER IS PRESENT in the user's message (sharp/shooting/radiating pain, numbness, tingling, weakness, night pain, sudden new severe pain). Logs an observation tagged 'concern' for the next physio visit. After calling this, your reply MUST follow the safety-floor template — do NOT also suggest exercise.",
+      parameters: {
+        type: "object",
+        properties: {
+          user_words: {
+            type: "string",
+            description: "The user's exact phrasing of the symptom.",
+          },
+          symptom_category: {
+            type: "string",
+            enum: [
+              "sharp_pain",
+              "radiating",
+              "numbness_or_tingling",
+              "weakness",
+              "night_pain",
+              "new_severe",
+              "other",
+            ],
+          },
+        },
+        required: ["user_words", "symptom_category"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "mark_observation",
       description:
         "Record an observation worth surfacing to the user's physio at their next appointment. Don't send anything — just log.",
@@ -164,6 +223,10 @@ export async function executeTool(
       return await toolRequestReplan(profileId, args);
     case "mark_observation":
       return await toolMarkObservation(profileId, args);
+    case "suggest_exercise":
+      return await toolSuggestExercise(profileId, args);
+    case "flag_safety":
+      return await toolFlagSafety(profileId, args);
     default:
       return { ok: false, error: `Unknown tool: ${name}` };
   }
@@ -322,6 +385,50 @@ async function toolRequestReplan(
   });
   if (error) return { ok: false, error: error.message };
   return { ok: true, summary: "Coach will replan on next run" };
+}
+
+async function toolSuggestExercise(
+  _profileId: string,
+  args: Record<string, unknown>,
+): Promise<ToolResult> {
+  const id = args.exercise_id as string;
+  const dur = (args.duration_or_reps as string) ?? "";
+  if (!id) return { ok: false, error: "suggest_exercise needs exercise_id" };
+  const ex = EXERCISE_LIBRARY.find((e) => e.id === id);
+  if (!ex) {
+    // Tightest possible safety: refuse to suggest unknown exercises. The
+    // model has to pick from the actual library or fall back to micro-
+    // movements in plain text.
+    return {
+      ok: false,
+      error: `exercise_id "${id}" not in library. Pick from exercise_pool or describe a safe micro-movement in plain text instead.`,
+    };
+  }
+  return {
+    ok: true,
+    summary: `${ex.name} — ${dur}`,
+  };
+}
+
+async function toolFlagSafety(
+  profileId: string,
+  args: Record<string, unknown>,
+): Promise<ToolResult> {
+  const userWords = (args.user_words as string) ?? "(no exact wording captured)";
+  const category = (args.symptom_category as string) ?? "other";
+  const supabase = getServiceSupabase();
+  const { error } = await supabase.from("agent_observations").insert({
+    profile_id: profileId,
+    observed_by_agent: "companion",
+    observation_text: `SAFETY FLAG (${category}): ${userWords}`,
+    category: "concern",
+    severity: "concern",
+  });
+  if (error) return { ok: false, error: error.message };
+  return {
+    ok: true,
+    summary: "logged concern for physio — exercise suggestions paused this turn",
+  };
 }
 
 async function toolMarkObservation(
