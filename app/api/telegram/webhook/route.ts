@@ -310,6 +310,13 @@ async function handleFreeText(profileId: string, text: string) {
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    // Log the error so /care-team and the conversation history show what
+    // happened — silent error responses make production debugging painful.
+    await supabase.from("notifications").insert({
+      profile_id: profileId,
+      sent_by_agent: "companion",
+      message_text: `[error] ${msg}`,
+    });
     await sendTelegramMessage(
       `Hit a snag replying — ${msg}. Slash commands still work; try /help.`,
     );
