@@ -13,6 +13,7 @@ import {
   isSupabaseConfigured,
 } from "@/lib/agents/server-supabase";
 import { mean, stdev } from "@/lib/agents/stats";
+import { METRICS_VERSION, isCurrentMetrics } from "@/lib/pose/stats";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -74,7 +75,7 @@ export async function GET(req: Request) {
 
   // Prefer high/moderate confidence final scans (same fallback as the trend
   // view: final → initial when final missing).
-  const usable = (sessions as SessionRow[])
+  const withSnaps = (sessions as SessionRow[])
     .map((s) => {
       const snap = (s.final_scan ?? s.initial_scan) as Snap | null;
       if (!snap?.measurements) return null;
@@ -82,6 +83,14 @@ export async function GET(req: Request) {
     })
     .filter((x): x is { snap: Snap; started_at: string; conf: string | null } => x !== null)
     .filter((x) => x.conf !== "low");
+
+  // Scans from an older measurement pipeline sit on a different scale — the
+  // pre-v2 horizontal metrics run up to 1.78x larger. Pooling them here would
+  // shift every mean and inflate every standard deviation, which in turn
+  // desensitises the cascade thresholds that read baseline + 2σ. Drop them and
+  // let the 30-day window refill with comparable scans.
+  const usable = withSnaps.filter((x) => isCurrentMetrics(x.snap));
+  const skippedLegacy = withSnaps.length - usable.length;
 
   if (usable.length < MIN_SESSIONS_FOR_BASELINE) {
     await supabase.from("personal_baselines").upsert({
@@ -93,6 +102,8 @@ export async function GET(req: Request) {
       ok: true,
       reason: "insufficient_data",
       sample_count: usable.length,
+      skipped_legacy_metrics: skippedLegacy,
+      metrics_version: METRICS_VERSION,
       threshold: MIN_SESSIONS_FOR_BASELINE,
     });
   }
@@ -147,7 +158,12 @@ export async function GET(req: Request) {
     );
   }
 
-  return NextResponse.json({ ok: true, sample_count: usable.length });
+  return NextResponse.json({
+    ok: true,
+    sample_count: usable.length,
+    skipped_legacy_metrics: skippedLegacy,
+    metrics_version: METRICS_VERSION,
+  });
 }
 
 function aggregatePainBaseline(rows: { pain_check: unknown }[]) {

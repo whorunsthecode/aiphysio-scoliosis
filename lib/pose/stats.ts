@@ -11,6 +11,30 @@
 
 import type { PostureMeasurements } from "./types";
 
+// Version of the measurement pipeline that produced a snapshot.
+//
+//   1 — original. Horizontal spans (head offset, segment deviations, the
+//       pelvic rotation proxy) were scaled by a vertically-derived factor
+//       without correcting for the frame's aspect ratio, inflating them by up
+//       to 1.78x on a 16:9 camera. No scale-invariant metrics.
+//   2 — aspect-corrected, and carries shoulderTiltDeg / hipTiltDeg /
+//       headOffsetRatio / trunkShiftRatio.
+//
+// Values from different versions are on different scales and must never be
+// pooled into the same mean, standard deviation, or trend line. Anything
+// computing statistics across sessions filters on this — see isCurrentMetrics.
+// Snapshots written before the field existed read as version 1.
+export const METRICS_VERSION = 2;
+
+export function snapshotMetricsVersion(snap: unknown): number {
+  const v = (snap as { metricsVersion?: unknown } | null)?.metricsVersion;
+  return typeof v === "number" && Number.isFinite(v) ? v : 1;
+}
+
+export function isCurrentMetrics(snap: unknown): boolean {
+  return snapshotMetricsVersion(snap) === METRICS_VERSION;
+}
+
 export const CV_REF_MM = 5; // floor for the CV denominator, millimetre metrics
 export const CV_REF_DEG = 1; // floor for tilt angles, degrees
 export const CV_REF_RATIO = 0.02; // floor for shoulder-width-fraction metrics
@@ -24,6 +48,8 @@ export type MeasurementStats = {
 };
 
 export type PostureSnapshot = {
+  // Which measurement pipeline produced this. See METRICS_VERSION.
+  metricsVersion: number;
   measurements: PostureMeasurements; // means
   stats: {
     shoulderDiff: MeasurementStats;
@@ -159,6 +185,7 @@ export function aggregateScanFrames(
     rotationVerified || cvBand !== "high" ? cvBand : "moderate";
 
   return {
+    metricsVersion: METRICS_VERSION,
     measurements,
     stats: {
       shoulderDiff,

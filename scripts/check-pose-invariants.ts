@@ -16,6 +16,12 @@
 // per-axis exactly as MoveNet and MediaPipe emit them.
 
 import { bodyRotationDeg, computePosture } from "@/lib/pose/compute";
+import {
+  METRICS_VERSION,
+  aggregateScanFrames,
+  isCurrentMetrics,
+  snapshotMetricsVersion,
+} from "@/lib/pose/stats";
 import { POSE, type NormalizedLandmark } from "@/lib/pose/types";
 
 const FOCAL_PX = 1000;
@@ -204,6 +210,45 @@ for (const trueTilt of [0, 2, 5, 10, 15]) {
     "a broad-shouldered stationary subject is not reported as rotated",
     broad === null || broad < 5,
     `expected null or <5deg, got ${broad}`,
+  );
+}
+
+// 6. Metric versioning — statistics must never pool across pipelines.
+{
+  const frames = [0, 1, 2].map(
+    (i) =>
+      measure({
+        tiltDeg: 4 + i * 0.05,
+        distanceMm: 1500,
+        frameW: 1280,
+        frameH: 720,
+      }),
+  );
+  const snap = aggregateScanFrames(frames, {
+    bodyRotationsDeg: [null, null, null],
+    poseConfidences: [0.9, 0.9, 0.9],
+  });
+
+  check(
+    "a fresh snapshot is stamped with the current metrics version",
+    snap.metricsVersion === METRICS_VERSION && isCurrentMetrics(snap),
+    `got version ${snap.metricsVersion}, expected ${METRICS_VERSION}`,
+  );
+  check(
+    "a snapshot with no version field reads as legacy, not current",
+    snapshotMetricsVersion({ measurements: {} }) === 1 &&
+      !isCurrentMetrics({ measurements: {} }),
+    `untagged snapshots must not be pooled with v${METRICS_VERSION} statistics`,
+  );
+  check(
+    "yaw unmeasurable across every frame yields null, not zero",
+    snap.bodyRotationMaxDeg === null && snap.rotationVerified === false,
+    `got ${snap.bodyRotationMaxDeg} / verified=${snap.rotationVerified}`,
+  );
+  check(
+    "an unverified-rotation scan is capped below high confidence",
+    snap.scanConfidence !== "high",
+    `got "${snap.scanConfidence}"`,
   );
 }
 

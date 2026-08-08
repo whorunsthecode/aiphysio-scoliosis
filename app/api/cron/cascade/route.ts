@@ -16,6 +16,7 @@ import {
   isSupabaseConfigured,
 } from "@/lib/agents/server-supabase";
 import { CASCADE_MODELS } from "@/lib/agents/cascade";
+import { isCurrentMetrics } from "@/lib/pose/stats";
 import { deriveCurvePattern } from "@/lib/exercises/profile";
 import type { CurvePatternKey } from "@/lib/exercises/types";
 
@@ -96,9 +97,13 @@ export async function GET(req: Request) {
     .eq("profile_id", profileId)
     .gte("started_at", since);
 
+  // These signals are compared against personal_baselines, which is computed
+  // from current-version scans only. Mixing an older pipeline's values in here
+  // would compare two different scales and fire stages spuriously.
   const snaps: Snap[] = ((sessions ?? []) as { final_scan: unknown; initial_scan: unknown }[])
     .map((s) => (s.final_scan ?? s.initial_scan) as Snap | null)
-    .filter((s): s is Snap => s !== null && !!s.measurements);
+    .filter((s): s is Snap => s !== null && !!s.measurements)
+    .filter((s) => isCurrentMetrics(s));
 
   if (snaps.length === 0) {
     return NextResponse.json({

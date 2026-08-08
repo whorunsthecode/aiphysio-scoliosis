@@ -5,7 +5,7 @@
 // computing the trend slope, with a floor on std to avoid division blow-up.
 
 import type { SessionState } from "./types";
-import type { PostureSnapshot } from "@/lib/pose/stats";
+import { isCurrentMetrics, type PostureSnapshot } from "@/lib/pose/stats";
 
 export type TrendPoint = {
   t: number; // unix ms
@@ -27,6 +27,10 @@ export type TrendSeries = {
   slope: number;
   // Significant change band (slope × span) vs noise (mean std).
   changeMagnitude: number;
+  // Sessions dropped because they came from an older measurement pipeline on
+  // a different scale. Surface this when non-zero — otherwise the chart looks
+  // emptier than the user's history without explaining why.
+  excludedLegacyCount: number;
 };
 
 const STD_FLOOR = 0.5;
@@ -140,10 +144,17 @@ export function extractTrend(
   measurementId: MeasurementId,
 ): TrendSeries {
   const def = MEASUREMENT_DEFS[measurementId];
+  let excludedLegacyCount = 0;
   const points: TrendPoint[] = sessions
     .map((s) => {
       const snap = snapshotFor(s);
       if (!snap) return null;
+      // A pre-v2 scan sits on a different scale; plotting it alongside a v2
+      // scan draws a step change that reads as real postural drift.
+      if (!isCurrentMetrics(snap)) {
+        excludedLegacyCount++;
+        return null;
+      }
       const v = def.valueAccessor(snap);
       return {
         t: s.startedAt,
@@ -189,6 +200,7 @@ export function extractTrend(
     direction,
     slope,
     changeMagnitude,
+    excludedLegacyCount,
   };
 }
 

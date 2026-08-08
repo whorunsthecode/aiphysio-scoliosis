@@ -5,6 +5,7 @@
 // DB directly during reasoning. Keeps them stateless and testable.
 
 import { getServiceSupabase } from "./server-supabase";
+import { isCurrentMetrics } from "@/lib/pose/stats";
 
 export type AgentName = "coach" | "companion" | "liaison";
 
@@ -307,16 +308,15 @@ export function serializeContext(ctx: UserContext): unknown {
     baseline: ctx.baseline,
     adherence: ctx.adherence,
     recent_sessions_summary: ctx.recentSessions.map((s) => {
-      const finalSnap = s.final_scan as
+      const snap = (s.final_scan ?? s.initial_scan) as
         | { measurements?: { overallScore: number } }
         | null;
-      const initialSnap = s.initial_scan as
-        | { measurements?: { overallScore: number } }
-        | null;
-      const score =
-        finalSnap?.measurements?.overallScore ??
-        initialSnap?.measurements?.overallScore ??
-        null;
+      // overallScore is a weighted sum of the millimetre metrics, so it moved
+      // with the aspect-ratio fix. Handing an agent a series that straddles
+      // both pipelines invites it to narrate the version bump as progress.
+      const score = isCurrentMetrics(snap)
+        ? (snap?.measurements?.overallScore ?? null)
+        : null;
       return {
         started_at: s.started_at,
         completed: s.completed_at !== null,
