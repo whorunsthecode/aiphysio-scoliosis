@@ -31,9 +31,22 @@ export type TrendSeries = {
   // a different scale. Surface this when non-zero — otherwise the chart looks
   // emptier than the user's history without explaining why.
   excludedLegacyCount: number;
+  // How much change was required before this trend would be called at all.
+  threshold: number;
+  // Whether that threshold came from a real repeatability study or from the
+  // weak within-scan fallback. The UI should hedge harder on the latter.
+  thresholdBasis: "measured_mdc" | "within_scan_estimate";
 };
 
 const STD_FLOOR = 0.5;
+
+// Multiplier applied to within-scan jitter when no empirical MDC exists.
+// The old value was 1.5, which treated frame wobble as if it were the whole
+// error budget. Between-session repeatability is several times worse, so this
+// is deliberately conservative — it will call fewer trends, and the ones it
+// calls are less likely to be a moved camera. Replace it with a real MDC from
+// lib/pose/repeatability.ts as soon as one exists.
+const WITHIN_SCAN_FALLBACK_K = 4;
 
 // Pull a series for one measurement key out of a list of sessions.
 type SnapshotKey = keyof PostureSnapshot["stats"]; // narrow set
@@ -142,6 +155,9 @@ function snapshotFor(s: SessionState): PostureSnapshot | null {
 export function extractTrend(
   sessions: SessionState[],
   measurementId: MeasurementId,
+  // Empirically measured minimal detectable change for this measurement, in
+  // the measurement's own units. Omit until a repeatability study has run.
+  mdc?: number | null,
 ): TrendSeries {
   const def = MEASUREMENT_DEFS[measurementId];
   let excludedLegacyCount = 0;
@@ -169,12 +185,25 @@ export function extractTrend(
   const { slope, changeMagnitude } = weightedSlope(points);
 
   let direction: TrendDirection = "stable";
+  // The threshold a change must clear to be called. Prefer an empirically
+  // measured between-session MDC; fall back to within-scan jitter only when
+  // no repeatability study has been run yet.
+  //
+  // That fallback is known to be too permissive — frame jitter across one
+  // standing is several times smaller than the error from re-placing the
+  // camera and re-positioning the body — so it is inflated here and the
+  // series reports which basis was used, letting the UI hedge accordingly.
+  const meanStd = points.length
+    ? points.reduce((a, p) => a + p.std, 0) / points.length
+    : 0;
+  const empiricalMdc = mdc ?? null;
+  const threshold =
+    empiricalMdc !== null ? empiricalMdc : meanStd * WITHIN_SCAN_FALLBACK_K;
+
   if (points.length >= 2) {
-    const meanStd =
-      points.reduce((a, p) => a + p.std, 0) / points.length;
     const totalChange = slope * (points[points.length - 1].t - points[0].t);
     const totalChangeMm = Math.abs(totalChange);
-    if (totalChangeMm > meanStd * 1.5) {
+    if (totalChangeMm > threshold) {
       // Determine direction relative to "improvement"
       const startMag =
         def.improvementMode === "lower_magnitude"
@@ -201,6 +230,8 @@ export function extractTrend(
     slope,
     changeMagnitude,
     excludedLegacyCount,
+    threshold,
+    thresholdBasis: empiricalMdc !== null ? "measured_mdc" : "within_scan_estimate",
   };
 }
 
