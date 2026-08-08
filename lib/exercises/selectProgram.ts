@@ -138,6 +138,19 @@ export function selectProgram(input: SelectionInput): SelectionResult {
   });
 }
 
+// An exercise is side-dependent when the library gives it a cue for specific
+// curve patterns — that cue is what tells the user which side to work. An
+// exercise carrying only an "any" cue applies the same way to everyone.
+function isSideDependent(e: Exercise): boolean {
+  return Object.keys(e.asymmetric_cues ?? {}).some((k) => k !== "any");
+}
+
+// True when we know neither the thoracic nor the lumbar convexity, so no
+// side-specific instruction can be given honestly.
+function sidesUnknown(sides: ReturnType<typeof deriveRegionalSides>): boolean {
+  return !sides.thoracicConvex && !sides.lumbarConvex;
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Physio-cleared mode
 // ─────────────────────────────────────────────────────────────────────────
@@ -258,10 +271,31 @@ function selfGuidedMode(args: {
   pain: PainPoint[];
 }): SelectionResult {
   const { pattern, sides, stiffHipSide, scan, pain } = args;
+  const notes: string[] = [];
 
   // Step 1: candidates = library, applicable, not contraindicated.
   let candidates = applicableForPattern(pattern);
   candidates = candidates.filter((e) => !exerciseContraindicated(e, sides));
+
+  // Step 1b: when we do not know which way the curve bends, withhold every
+  // exercise whose benefit depends on being done on a particular side.
+  //
+  // This is the most dangerous gap in the whole selection path. The side-plank
+  // rule in contraindications.ts only fires when BOTH the chosen side and the
+  // convex side are known — so with an unknown curve it stays silent, and a
+  // side-dependent exercise would be handed over with no side guidance at all.
+  // Held on the wrong side it reinforces the curve rather than opposing it.
+  // A coin flip is not an acceptable default when the downside is making
+  // someone's scoliosis worse, so these are withheld until the curve is known.
+  if (sidesUnknown(sides)) {
+    const before = candidates.length;
+    candidates = candidates.filter((e) => !isSideDependent(e));
+    if (candidates.length < before) {
+      notes.push(
+        "Some exercises only help when they're done on the side your curve bends toward. Until you've told me which way that is, I'm leaving those out and sticking to work that's the same on both sides.",
+      );
+    }
+  }
 
   // Step 2: filter by pain. If a region scores >= PAIN_SKIP_THRESHOLD, skip
   // any exercise that loads that region. If >= PAIN_REDUCE_THRESHOLD, allow
@@ -362,9 +396,10 @@ function selfGuidedMode(args: {
       };
     });
 
-  const notes: string[] = [];
   notes.push(
-    "Self-guided mode — these are tailored to your curve from a curated library. A physio's eye is the most valuable thing for scoliosis; consider booking a baseline assessment if you haven't.",
+    sidesUnknown(sides)
+      ? "Self-guided mode, working from what you've told me so far. Once you know which way your curve bends, I can tailor this properly — a physio or your X-ray report will have it."
+      : "Self-guided mode — these are tailored to your curve from a curated library. A physio's eye is the most valuable thing for scoliosis; consider booking a baseline assessment if you haven't.",
   );
   if (heavyPainRegions.size > 0) {
     notes.push(

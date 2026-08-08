@@ -61,6 +61,7 @@ export default function OnboardingPage() {
             update={update}
             onBack={goBack}
             onNext={goNext}
+            onSkip={goNext}
           />
         );
       case "segments":
@@ -70,6 +71,7 @@ export default function OnboardingPage() {
             update={update}
             onBack={goBack}
             onNext={goNext}
+            onSkip={goNext}
           />
         );
       case "xray":

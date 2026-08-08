@@ -29,6 +29,7 @@ interface SegmentStepProps {
   update: (patch: Partial<OnboardingState>) => void;
   onBack: () => void;
   onNext: () => void;
+  onSkip?: () => void;
 }
 
 export function SegmentStep({
@@ -36,6 +37,7 @@ export function SegmentStep({
   update,
   onBack,
   onNext,
+  onSkip,
 }: SegmentStepProps) {
   const setShift = (
     segment: keyof OnboardingState["segmentShifts"],
@@ -94,6 +96,18 @@ export function SegmentStep({
           ))}
         </div>
       </div>
+
+      {/* Segmental shift needs someone to look at your back. Plenty of
+          people have never had that done, and blocking on it strands them. */}
+      {onSkip ? (
+        <button
+          type="button"
+          onClick={onSkip}
+          className="self-start text-[14.5px] text-ink-tertiary underline underline-offset-2 transition-colors hover:text-ink-secondary focus:outline-none focus:text-ink-secondary"
+        >
+          Skip — I&apos;m not sure
+        </button>
+      ) : null}
 
       <StepNav onBack={onBack} onNext={onNext} nextDisabled={!allSet} />
     </div>

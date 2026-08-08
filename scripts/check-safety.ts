@@ -14,6 +14,7 @@ import {
   triage,
 } from "@/lib/safety/redFlags";
 import { selectProgram } from "@/lib/exercises/selectProgram";
+import { initialOnboardingState } from "@/lib/onboarding/initialState";
 import type { OnboardingState } from "@/lib/onboarding/types";
 
 let failures = 0;
@@ -164,7 +165,7 @@ console.log("\nred-flag screening\n");
     name: "Test",
     curveType: "C",
     severity: "mild",
-    primaryCurveApex: "thoracic",
+    primaryCurveApex: "lower_thoracic",
     primaryLeanSide: "right",
     secondaryCurveApex: null,
     secondaryLeanSide: null,
@@ -232,6 +233,70 @@ console.log("\nred-flag screening\n");
     "handoff summary is empty when nothing fired",
     handoffSummary(triage({ answers: {} })) === "",
     "empty screen should produce no document",
+  );
+}
+
+
+// ── unknown-curve safety ──
+//
+// The path a user takes when all they know is "I was told I have scoliosis".
+console.log("\nunknown-curve programme\n");
+{
+  const unknown = {
+    ...initialOnboardingState,
+    name: "Unknown",
+    curveType: null,
+    primaryCurveApex: null,
+    primaryLeanSide: null,
+  } as unknown as OnboardingState;
+
+  const known = {
+    ...unknown,
+    curveType: "C",
+    primaryCurveApex: "lower_thoracic",
+    primaryLeanSide: "right",
+  } as unknown as OnboardingState;
+
+  const uRes = selectProgram({ profile: unknown });
+  const kRes = selectProgram({ profile: known });
+
+  check(
+    "an unknown curve still produces a usable programme",
+    uRes.exercises.length > 0,
+    `got ${uRes.exercises.length} exercises — an empty programme would just push people away`,
+  );
+
+  const sideDependent = (r: typeof uRes) =>
+    r.exercises.filter(
+      (e) =>
+        e.exercise &&
+        Object.keys(e.exercise.asymmetric_cues ?? {}).some((k) => k !== "any"),
+    );
+
+  check(
+    "no side-dependent exercise is prescribed without knowing the side",
+    sideDependent(uRes).length === 0,
+    `prescribed ${sideDependent(uRes)
+      .map((e) => e.exercise?.id)
+      .join(", ")} with no known convexity — held on the wrong side these reinforce the curve`,
+  );
+
+  check(
+    "a known curve does get side-specific work",
+    sideDependent(kRes).length > 0,
+    "withholding asymmetric work from a known curve would defeat the point of the product",
+  );
+
+  check(
+    "the user is told why their programme is more conservative",
+    uRes.notes.some((n) => n.toLowerCase().includes("side")),
+    `notes were: ${JSON.stringify(uRes.notes)}`,
+  );
+
+  check(
+    "no exercise carries a side cue when the side is unknown",
+    uRes.exercises.every((e) => !e.display.side_cue?.match(/\b(left|right)\b/i)),
+    "a left/right instruction with no basis is a coin flip on someone's spine",
   );
 }
 

@@ -40,9 +40,10 @@ interface CurveStepProps {
   update: (patch: Partial<OnboardingState>) => void;
   onBack: () => void;
   onNext: () => void;
+  onSkip?: () => void;
 }
 
-export function CurveStep({ state, update, onBack, onNext }: CurveStepProps) {
+export function CurveStep({ state, update, onBack, onNext, onSkip }: CurveStepProps) {
   const showApex = state.curveType && state.curveType !== "unknown";
   const showLean = state.curveType && state.curveType !== "unknown";
   const showSecondary = state.curveType === "S";
@@ -170,6 +171,21 @@ export function CurveStep({ state, update, onBack, onNext }: CurveStepProps) {
           ))}
         </div>
       </section>
+
+      {/* Most people arriving know only that someone told them they have
+          scoliosis. Making the curve mandatory turns them away at the door;
+          letting them through unblocks the product, and selectProgram
+          withholds every side-dependent exercise until the curve is known so
+          the fallback stays safe rather than guessing a side. */}
+      {onSkip ? (
+        <button
+          type="button"
+          onClick={onSkip}
+          className="self-start text-[14.5px] text-ink-tertiary underline underline-offset-2 transition-colors hover:text-ink-secondary focus:outline-none focus:text-ink-secondary"
+        >
+          I don&apos;t know my curve yet
+        </button>
+      ) : null}
 
       <StepNav onBack={onBack} onNext={onNext} nextDisabled={!canContinue} />
     </div>
