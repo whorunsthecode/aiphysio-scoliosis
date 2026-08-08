@@ -6,9 +6,9 @@
 import { NextResponse } from "next/server";
 import {
   SUPABASE_NOT_CONFIGURED_RESPONSE,
-  getServiceSupabase,
   isSupabaseConfigured,
 } from "@/lib/agents/server-supabase";
+import { getAuthedContext } from "@/lib/supabase/server";
 import type { OnboardingState } from "@/lib/onboarding/types";
 
 export const runtime = "nodejs";
@@ -33,11 +33,19 @@ export async function POST(req: Request) {
     );
   }
 
-  const supabase = getServiceSupabase();
+  // Runs as the signed-in user, so RLS — not this handler — is what actually
+  // stops one account writing into another's profile.
+  const ctx = await getAuthedContext();
+  if (!ctx) {
+    return NextResponse.json(
+      { ok: false, error: "Not signed in" },
+      { status: 401 },
+    );
+  }
+  const { supabase, user, profileId: existingProfileId } = ctx;
 
-  // Single-user v1: upsert by name. If the name matches an existing profile,
-  // update in place. Multi-user later would scope by auth.uid().
   const profileRow = {
+    user_id: user.id,
     name: state.name,
     curve_type: state.curveType,
     severity: state.severity,
@@ -61,26 +69,22 @@ export async function POST(req: Request) {
     updated_at: new Date().toISOString(),
   };
 
-  // Look up existing profile by name (single-user model).
-  const { data: existing } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("name", state.name)
-    .maybeSingle();
-
+  // One profile per account — matched on ownership, never on name. Matching
+  // by name was how two people called the same thing would have ended up
+  // writing over each other.
   let profileId: string;
-  if (existing?.id) {
+  if (existingProfileId) {
     const { error } = await supabase
       .from("profiles")
       .update(profileRow)
-      .eq("id", existing.id);
+      .eq("id", existingProfileId);
     if (error) {
       return NextResponse.json(
         { ok: false, error: error.message },
         { status: 500 },
       );
     }
-    profileId = existing.id;
+    profileId = existingProfileId;
   } else {
     const { data, error } = await supabase
       .from("profiles")

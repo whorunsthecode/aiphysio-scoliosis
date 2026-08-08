@@ -265,6 +265,85 @@ create index if not exists sessions_source on sessions(source);
 -- it when planning so the messaging stays connected to lived motivation.
 alter table profiles add column if not exists goal_text text;
 
+-- ═════════════════════════════════════════════════════════════════════════
+-- AUTH + ROW LEVEL SECURITY
+--
+-- Before this section existed, every table was readable and writable by
+-- anyone holding the anon key — which ships to the browser. Sessions were
+-- written client-side (lib/session/persist.ts), so the anon key alone gave
+-- read/write access to every user's pain logs and posture history. RLS below
+-- closes that.
+--
+-- Ownership model: profiles.user_id points at auth.users. Every other table
+-- reaches its owner through profile_id. The service_role key bypasses RLS
+-- entirely, which is what keeps the cron and agent routes working.
+--
+-- Re-running this file is safe; every statement is idempotent.
+-- ═════════════════════════════════════════════════════════════════════════
+
+alter table profiles add column if not exists user_id uuid references auth.users(id) on delete cascade;
+
+-- One profile per account. Partial so pre-auth rows (user_id null) don't
+-- collide with each other while they wait to be claimed.
+create unique index if not exists profiles_user_id_unique
+  on profiles(user_id) where user_id is not null;
+
+alter table profiles              enable row level security;
+alter table physio_programs       enable row level security;
+alter table xrays                 enable row level security;
+alter table sessions              enable row level security;
+alter table monthly_assessments   enable row level security;
+alter table lifestyle_weekly      enable row level security;
+alter table personal_baselines    enable row level security;
+alter table pain_correlations     enable row level security;
+alter table cascade_predictions   enable row level security;
+alter table weekly_programs       enable row level security;
+alter table agent_observations    enable row level security;
+alter table agent_messages        enable row level security;
+alter table appointments          enable row level security;
+alter table liaison_documents     enable row level security;
+alter table notifications         enable row level security;
+
+-- Owns the profile row itself.
+drop policy if exists profiles_own on profiles;
+create policy profiles_own on profiles
+  for all to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+-- Every child table reaches auth.uid() through its profile. Written as a
+-- DO block so adding a table later is a one-line change to the array rather
+-- than fifteen near-identical policy statements.
+do $$
+declare
+  t text;
+  child_tables text[] := array[
+    'physio_programs', 'xrays', 'sessions', 'monthly_assessments',
+    'lifestyle_weekly', 'personal_baselines', 'pain_correlations',
+    'cascade_predictions', 'weekly_programs', 'agent_observations',
+    'agent_messages', 'appointments', 'liaison_documents', 'notifications'
+  ];
+begin
+  foreach t in array child_tables loop
+    execute format('drop policy if exists %I_own on %I', t, t);
+    execute format($f$
+      create policy %I_own on %I
+        for all to authenticated
+        using (exists (
+          select 1 from profiles p
+          where p.id = %I.profile_id and p.user_id = auth.uid()
+        ))
+        with check (exists (
+          select 1 from profiles p
+          where p.id = %I.profile_id and p.user_id = auth.uid()
+        ))
+    $f$, t, t, t, t);
+  end loop;
+end $$;
+
+-- The anon role gets nothing. Sign-in is the only route to data.
+revoke all on all tables in schema public from anon;
+
 -- ─────────────────────────────────────────────────────────────────────────
 -- Grants
 -- ─────────────────────────────────────────────────────────────────────────

@@ -35,22 +35,38 @@ export const SUPABASE_NOT_CONFIGURED_RESPONSE = {
   configured: false as const,
 };
 
-// Single-user v1: pick the most recently updated profile. Multi-user later
-// would scope agent runs by profile_id.
+// The agent tier is still single-tenant: TELEGRAM_CHAT_ID is one chat in the
+// environment, so Coach, Companion and Liaison have exactly one person they
+// can talk to. Picking "the most recently updated profile" was fine while
+// that was also the only profile — but with accounts, it would happily load
+// one user's pain history and send it to a different user's Telegram.
+//
+// So this now refuses rather than guesses. A second profile makes the agent
+// tier inert until it is properly scoped per user, which is a visible outage
+// instead of a silent disclosure. Fixing it properly means per-user Telegram
+// linkage and cron jobs that iterate profiles — tracked, not done here.
 export async function getCurrentProfileId(): Promise<string | null> {
   if (!isSupabaseConfigured()) return null;
   const supabase = getServiceSupabase();
   const { data, error } = await supabase
     .from("profiles")
     .select("id")
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .order("created_at", { ascending: true })
+    .limit(2);
   if (error) {
     console.warn("getCurrentProfileId failed:", error.message);
     return null;
   }
-  return data?.id ?? null;
+  if (!data || data.length === 0) return null;
+  if (data.length > 1) {
+    console.warn(
+      "Agent tier is single-tenant but more than one profile exists — " +
+        "refusing to run rather than risk sending one user's data to another. " +
+        "Scope the agent routes per profile before re-enabling.",
+    );
+    return null;
+  }
+  return data[0].id;
 }
 
 // Cron protection: Vercel sets `CRON_SECRET` and includes it as a Bearer

@@ -152,6 +152,45 @@ data is not migrated automatically — it's a stand-in for offline runs.
 
 ---
 
+## Accounts and row-level security
+
+Every table has RLS enabled and is reachable only by the account that owns it.
+`profiles.user_id` points at `auth.users`; every other table reaches its owner
+through `profile_id`. The `service_role` key bypasses RLS, which is what keeps
+the cron and agent routes working without a user session.
+
+Sign-in is a magic link — no passwords stored, reset, or leaked.
+
+1. **Supabase dashboard → Authentication → Providers** — make sure Email is
+   enabled. Turn off "Confirm email" only if you want faster local testing.
+2. **Authentication → URL Configuration** — add your callback to the redirect
+   allow-list:
+   - `http://localhost:3000/auth/callback` for dev
+   - `https://<your-domain>/auth/callback` for production
+3. **Re-run [`supabase/schema.sql`](./supabase/schema.sql)** to add `user_id`
+   and the RLS policies. Idempotent, so running it again is safe.
+4. Visit `/sign-in` and request a link.
+
+**Existing single-user data is preserved.** A profile created before accounts
+existed has `user_id` null, which makes it invisible under RLS. The first
+account to sign in adopts the oldest unclaimed profile, so prior sessions,
+scans and pain logs carry over. Later accounts get their own profile.
+
+Without Supabase env vars the app skips auth entirely and runs in its
+localStorage-only mode, exactly as before.
+
+### The agent tier is still single-tenant
+
+`TELEGRAM_CHAT_ID` is one chat in the environment, so Coach, Companion and
+Liaison have exactly one person they can reach. `getCurrentProfileId()` now
+**refuses to run when more than one profile exists** rather than picking the
+most recently updated one — which, with accounts, would have loaded one user's
+pain history and sent it to a different user's Telegram. A second account
+makes the agent tier inert until it is scoped per user. That needs per-user
+Telegram linkage and cron jobs that iterate profiles.
+
+---
+
 ## Get the API keys
 
 - **Groq** — https://console.groq.com — generous free tier, JSON-mode supported
