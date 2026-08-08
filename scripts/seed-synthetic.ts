@@ -260,8 +260,46 @@ function buildSnapshot(m: ReturnType<typeof measurementsFor>) {
     ] as number[]
   ).reduce((a, b) => a + b, 0) / 4;
 
+  // Scale-invariant metrics, derived from the mm values so the synthetic rows
+  // stay internally consistent. Reference spans are the same population
+  // averages the mm generator implicitly assumes.
+  const SHOULDER_W_MM = 400;
+  const HIP_W_MM = 320;
+  const deg = (riseMm: number, spanMm: number) =>
+    Math.atan2(riseMm, spanMm) * (180 / Math.PI);
+  const asStat = (mean: number, std: number, ref: number) => ({
+    mean,
+    std,
+    cv: std / Math.max(Math.abs(mean), ref),
+  });
+
+  const shoulderTilt = asStat(
+    deg(m.shoulderDiff.mean, SHOULDER_W_MM),
+    deg(m.shoulderDiff.std, SHOULDER_W_MM),
+    1,
+  );
+  const hipTilt = asStat(
+    deg(m.hipDiff.mean, HIP_W_MM),
+    deg(m.hipDiff.std, HIP_W_MM),
+    1,
+  );
+  const headOffsetRatio = asStat(
+    m.headOffset.mean / SHOULDER_W_MM,
+    m.headOffset.std / SHOULDER_W_MM,
+    0.02,
+  );
+  const trunkShiftRatio = asStat(
+    m.segments.upperThoracic.mean / SHOULDER_W_MM,
+    m.segments.upperThoracic.std / SHOULDER_W_MM,
+    0.02,
+  );
+
   return {
     measurements: {
+      shoulderTiltDeg: shoulderTilt.mean,
+      hipTiltDeg: hipTilt.mean,
+      headOffsetRatio: headOffsetRatio.mean,
+      trunkShiftRatio: trunkShiftRatio.mean,
       shoulderDiffMm: m.shoulderDiff.mean,
       hipDiffMm: m.hipDiff.mean,
       headOffsetMm: m.headOffset.mean,
@@ -283,10 +321,17 @@ function buildSnapshot(m: ReturnType<typeof measurementsFor>) {
       cervical: stat(m.segments.cervical),
       upperThoracic: stat(m.segments.upperThoracic),
       lowerThoracic: stat(m.segments.lowerThoracic),
+      shoulderTilt,
+      hipTilt,
+      headOffsetRatio,
+      trunkShiftRatio,
     },
     scanConfidence,
     framesUsed: 90 + Math.floor(r() * 10),
-    bodyRotationMaxDeg: 1 + r() * 2,
+    // The scan pipeline runs MoveNet, which carries no depth, so yaw is never
+    // observable — synthetic rows mirror that rather than inventing a value.
+    bodyRotationMaxDeg: null,
+    rotationVerified: false,
     meanPoseConfidence: 0.78 + r() * 0.15,
     meanStds,
   };

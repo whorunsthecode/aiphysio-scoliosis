@@ -11,7 +11,9 @@
 
 import type { PostureMeasurements } from "./types";
 
-export const CV_REF_MM = 5; // floor for the CV denominator
+export const CV_REF_MM = 5; // floor for the CV denominator, millimetre metrics
+export const CV_REF_DEG = 1; // floor for tilt angles, degrees
+export const CV_REF_RATIO = 0.02; // floor for shoulder-width-fraction metrics
 
 export type ScanConfidence = "high" | "moderate" | "low";
 
@@ -31,10 +33,22 @@ export type PostureSnapshot = {
     cervical: MeasurementStats;
     upperThoracic: MeasurementStats;
     lowerThoracic: MeasurementStats;
+    // Scale-invariant metrics — no torso-length assumption. Prefer these.
+    shoulderTilt: MeasurementStats;
+    hipTilt: MeasurementStats;
+    headOffsetRatio: MeasurementStats;
+    trunkShiftRatio: MeasurementStats;
   };
   scanConfidence: ScanConfidence;
   framesUsed: number;
-  bodyRotationMaxDeg: number;
+  // Max yaw across frames, or null when yaw could not be measured at all
+  // (any depth-free landmark source — MoveNet included). Null is NOT zero.
+  bodyRotationMaxDeg: number | null;
+  // False when yaw was never observable during this scan. Consumers reading
+  // pelvicRotationMm, or comparing lateral offsets across sessions, must
+  // check this: an unverified scan can carry ~9mm of phantom asymmetry per
+  // 2° of unseen yaw at typical laptop distance.
+  rotationVerified: boolean;
   meanPoseConfidence: number;
 };
 
@@ -53,10 +67,10 @@ function stdDev(xs: number[]): number {
   return Math.sqrt(acc / (xs.length - 1));
 }
 
-function statsOf(xs: number[]): MeasurementStats {
+function statsOf(xs: number[], ref: number = CV_REF_MM): MeasurementStats {
   const m = mean(xs);
   const s = stdDev(xs);
-  const cv = s / Math.max(Math.abs(m), CV_REF_MM);
+  const cv = s / Math.max(Math.abs(m), ref);
   return { mean: m, std: s, cv };
 }
 
@@ -73,7 +87,8 @@ export function bandFromCv(cv: number): ScanConfidence {
 export function aggregateScanFrames(
   frames: PostureMeasurements[],
   meta: {
-    bodyRotationsDeg: number[];
+    // null entries = yaw was not observable on that frame.
+    bodyRotationsDeg: (number | null)[];
     poseConfidences: number[];
   },
 ): PostureSnapshot {
@@ -84,6 +99,20 @@ export function aggregateScanFrames(
   const cervical = statsOf(frames.map((f) => f.segments.cervical));
   const upperThoracic = statsOf(frames.map((f) => f.segments.upperThoracic));
   const lowerThoracic = statsOf(frames.map((f) => f.segments.lowerThoracic));
+
+  const shoulderTilt = statsOf(
+    frames.map((f) => f.shoulderTiltDeg),
+    CV_REF_DEG,
+  );
+  const hipTilt = statsOf(frames.map((f) => f.hipTiltDeg), CV_REF_DEG);
+  const headOffsetRatio = statsOf(
+    frames.map((f) => f.headOffsetRatio),
+    CV_REF_RATIO,
+  );
+  const trunkShiftRatio = statsOf(
+    frames.map((f) => f.trunkShiftRatio),
+    CV_REF_RATIO,
+  );
 
   // Aggregate scan confidence = worst CV across measurements.
   const worstCv = Math.max(
@@ -100,6 +129,10 @@ export function aggregateScanFrames(
   const overallScore = mean(frames.map((f) => f.overallScore));
 
   const measurements: PostureMeasurements = {
+    shoulderTiltDeg: shoulderTilt.mean,
+    hipTiltDeg: hipTilt.mean,
+    headOffsetRatio: headOffsetRatio.mean,
+    trunkShiftRatio: trunkShiftRatio.mean,
     shoulderDiffMm: shoulderDiff.mean,
     hipDiffMm: hipDiff.mean,
     headOffsetMm: headOffset.mean,
@@ -114,6 +147,17 @@ export function aggregateScanFrames(
     confidence: mean(meta.poseConfidences),
   };
 
+  const observedRotations = meta.bodyRotationsDeg.filter(
+    (d): d is number => typeof d === "number" && Number.isFinite(d),
+  );
+  const rotationVerified = observedRotations.length > 0;
+
+  // An unverified scan cannot be trusted at "high" — yaw we never saw is
+  // indistinguishable from real asymmetry in every lateral measurement.
+  const cvBand = bandFromCv(worstCv);
+  const scanConfidence: ScanConfidence =
+    rotationVerified || cvBand !== "high" ? cvBand : "moderate";
+
   return {
     measurements,
     stats: {
@@ -124,13 +168,17 @@ export function aggregateScanFrames(
       cervical,
       upperThoracic,
       lowerThoracic,
+      shoulderTilt,
+      hipTilt,
+      headOffsetRatio,
+      trunkShiftRatio,
     },
-    scanConfidence: bandFromCv(worstCv),
+    scanConfidence,
     framesUsed: frames.length,
-    bodyRotationMaxDeg: meta.bodyRotationsDeg.reduce(
-      (a, b) => Math.max(a, b),
-      0,
-    ),
+    bodyRotationMaxDeg: rotationVerified
+      ? observedRotations.reduce((a, b) => Math.max(a, b), 0)
+      : null,
+    rotationVerified,
     meanPoseConfidence: mean(meta.poseConfidences),
   };
 }
@@ -153,7 +201,16 @@ export function evaluateRejection(
   >,
 ): RejectionReason | null {
   if (snapshot.framesUsed < 30) return "too_few_frames";
-  if (snapshot.bodyRotationMaxDeg > 5) return "body_rotated";
+  // Only a measured yaw can reject a scan. When yaw is unknown the scan is
+  // still kept — it is downgraded to "moderate" confidence in
+  // aggregateScanFrames instead. Rejecting on an unmeasured value is what
+  // locked broad-shouldered users out of the scan entirely.
+  if (
+    typeof snapshot.bodyRotationMaxDeg === "number" &&
+    snapshot.bodyRotationMaxDeg > 5
+  ) {
+    return "body_rotated";
+  }
   if (snapshot.meanPoseConfidence < 0.7) return "low_pose_confidence";
   return null;
 }

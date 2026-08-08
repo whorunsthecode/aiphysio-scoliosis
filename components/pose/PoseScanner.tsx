@@ -111,7 +111,8 @@ export function PoseScanner({
 
   // Rolling buffers used while in `capturing` to compute the snapshot.
   const captureFramesRef = useRef<PostureMeasurements[]>([]);
-  const captureRotationsRef = useRef<number[]>([]);
+  // null entries = yaw was not observable on that frame (depth-free model).
+  const captureRotationsRef = useRef<(number | null)[]>([]);
   const capturePoseConfRef = useRef<number[]>([]);
   const captureStartedAtRef = useRef<number>(0);
   const lastCaptureTsRef = useRef<number>(0);
@@ -291,7 +292,10 @@ export function PoseScanner({
             setLandmarks(lms);
 
             if (torsoVisible) {
-              const next = computePosture(lms);
+              const next = computePosture(
+                lms,
+                (v.videoWidth || 1280) / (v.videoHeight || 720),
+              );
               if (next) {
                 const smoothed = smoothMeasurements(
                   liveMeasurementsRef.current,
@@ -653,8 +657,10 @@ export function PoseScanner({
           {snapshot ? (
             <p className="mt-3 text-[12px] text-ink-tertiary">
               {snapshot.framesUsed} frames · pose conf{" "}
-              {Math.round(snapshot.meanPoseConfidence * 100)}% · max body
-              rotation {snapshot.bodyRotationMaxDeg.toFixed(1)}°
+              {Math.round(snapshot.meanPoseConfidence * 100)}% ·{" "}
+              {snapshot.bodyRotationMaxDeg === null
+                ? "rotation not measurable on this camera — stand square-on"
+                : `max body rotation ${snapshot.bodyRotationMaxDeg.toFixed(1)}°`}
             </p>
           ) : null}
         </Card>

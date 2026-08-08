@@ -32,6 +32,37 @@ export const POSE = {
 } as const;
 
 export type PostureMeasurements = {
+  // ─────────────────── Scale-invariant metrics (preferred) ───────────────────
+  //
+  // These carry no torso-length assumption and no aspect-ratio dependence, so
+  // they are directly comparable across sessions, devices, and camera
+  // distances. Prefer them over the mm values below for anything longitudinal.
+  //
+  // Signed the same way as the mm fields: positive = left side higher on the
+  // body / shifted to the user's right.
+
+  // Angle of the shoulder line from horizontal, degrees.
+  shoulderTiltDeg: number;
+  // Angle of the hip line from horizontal, degrees.
+  hipTiltDeg: number;
+  // Head lateral offset from hip midpoint, as a fraction of shoulder width.
+  headOffsetRatio: number;
+  // Shoulder-midpoint lateral offset from hip midpoint, as a fraction of
+  // shoulder width. Replaces the mm "upper thoracic" segment deviation.
+  trunkShiftRatio: number;
+
+  // ─────────────────────── Millimetre metrics (legacy) ───────────────────────
+  //
+  // WARNING: every value below is scaled by TORSO_LENGTH_MM / (this user's
+  // true torso length). With the fixed 500mm anchor that is a systematic error
+  // of roughly ±20% per user. The constant cancels for within-person trends
+  // only while the user's torso length is stable — which is false for the
+  // adolescent population where scoliosis progresses fastest.
+  //
+  // These are retained because the Tier-1 baselines, cascade models, and trend
+  // engine still consume them. Treat them as within-session comparators, not
+  // as absolute measurements, and do not surface them as clinical numbers.
+
   // Differential = signed (left - right). Positive = left side higher / shifted right.
   shoulderDiffMm: number;
   hipDiffMm: number;
@@ -45,6 +76,14 @@ export type PostureMeasurements = {
     lumbar: number;
   };
   // Pelvic rotation proxy: difference in left vs right hip-to-shoulder length, in mm.
+  //
+  // WARNING: this construct is confounded by yaw. Rotating a perfectly
+  // symmetric body about its vertical axis changes left-vs-right torso
+  // length by exactly this mechanism — at 0.8m from the camera, 2° of yaw
+  // fabricates ~9mm. A single 2D view cannot separate "rotated symmetric
+  // trunk" from "square asymmetric trunk". Only trust this field when the
+  // snapshot reports rotationVerified === true, and even then treat it as
+  // weak evidence.
   pelvicRotationMm: number;
   // 0–100 composite alignment score.
   overallScore: number;
