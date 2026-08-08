@@ -62,6 +62,15 @@ export async function POST(req: Request) {
     daily_sitting_hours: state.lifestyle.dailySittingHours,
     bag_carrying_side: state.lifestyle.bagCarryingSide,
     sleep_position: state.lifestyle.sleepPosition,
+    age_years: typeof state.ageYears === "number" ? state.ageYears : null,
+    safety_screen: state.safetyScreen ?? {},
+    // Stamped only when the screen was actually completed, so a profile that
+    // predates the screen is distinguishable from one that answered no to
+    // everything.
+    safety_screened_at:
+      state.safetyScreen && Object.keys(state.safetyScreen).length > 0
+        ? new Date().toISOString()
+        : null,
     goal_text:
       typeof (state as unknown as { goalText?: string }).goalText === "string"
         ? (state as unknown as { goalText: string }).goalText

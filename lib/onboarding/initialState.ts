@@ -38,4 +38,7 @@ export const initialOnboardingState: OnboardingState = {
     sleepPosition: null,
   },
   pain: [],
+  ageYears: null,
+  // Empty, not all-false — an unanswered screening question is not a "no".
+  safetyScreen: {},
 };

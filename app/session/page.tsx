@@ -22,6 +22,9 @@ import { PainQuickCheck } from "@/components/session/PainQuickCheck";
 import { SessionComplete } from "@/components/session/SessionComplete";
 import { loadDraft } from "@/lib/onboarding/persist";
 import { initialOnboardingState } from "@/lib/onboarding/initialState";
+import { triage } from "@/lib/safety/redFlags";
+import type { TriageResult } from "@/lib/safety/types";
+import { RedFlagNotice } from "@/components/safety/RedFlagNotice";
 import {
   deriveCurvePattern,
   deriveRegionalSides,
@@ -64,6 +67,7 @@ const TEST_PROFILE: OnboardingState = {
 
 export default function SessionPage() {
   const [profile, setProfile] = useState<OnboardingState>(TEST_PROFILE);
+  const [triageResult, setTriage] = useState<TriageResult | null>(null);
   const [usedDraft, setUsedDraft] = useState(false);
   const [session, setSession] = useState<SessionState>(() => ({
     id: typeof crypto !== "undefined" ? crypto.randomUUID() : `${Date.now()}`,
@@ -95,13 +99,26 @@ export default function SessionPage() {
   useEffect(() => {
     if (session.phase !== "initial_scan") return;
     if (!session.initialScan) return;
+    // Re-run the stored screen every session rather than trusting the
+    // onboarding verdict indefinitely — the ruleset changes, and so do
+    // symptoms. An emergency flag returns an empty programme.
+    const triageResult = triage({
+      answers: profile.safetyScreen ?? {},
+      profile: {
+        primaryCurveApex: profile.primaryCurveApex,
+        primaryConvexSide: profile.primaryLeanSide,
+        ageYears: profile.ageYears ?? null,
+      },
+    });
     const program = selectProgram({
       profile,
       scan: session.initialScan.measurements,
       pain: session.pain,
       physioProgram: profile.physioProgram.parsed,
       physioClarifications: profile.physioProgram.clarifications,
+      triage: triageResult,
     });
+    setTriage(triageResult);
     setSession((s) => ({
       ...s,
       program,
@@ -206,7 +223,17 @@ export default function SessionPage() {
       ) : null}
 
       {session.phase === "program_preview" && program ? (
-        <ProgramPreview program={program} onBegin={beginProgram} />
+        <div className="flex flex-col gap-6">
+          {triageResult?.severity ? (
+            <RedFlagNotice result={triageResult} name={profile.name} />
+          ) : null}
+          {/* An emergency flag leaves selectProgram with nothing to show, and
+              there is no "begin anyway" affordance — the notice is the whole
+              screen. */}
+          {program.exercises.length > 0 ? (
+            <ProgramPreview program={program} onBegin={beginProgram} />
+          ) : null}
+        </div>
       ) : null}
 
       {session.phase === "exercise" && currentExercise && program ? (

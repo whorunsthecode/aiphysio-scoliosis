@@ -265,6 +265,15 @@ create index if not exists sessions_source on sessions(source);
 -- it when planning so the messaging stays connected to lived motivation.
 alter table profiles add column if not exists goal_text text;
 
+-- ─── Red-flag screen (lib/safety) ───
+-- Answers keyed by question id. Stored so the screen can be re-run against a
+-- changed ruleset and so Liaison can carry it into a handoff document.
+-- age_years feeds the derived rule about left thoracic curves before skeletal
+-- maturity.
+alter table profiles add column if not exists safety_screen jsonb default '{}'::jsonb;
+alter table profiles add column if not exists safety_screened_at timestamptz;
+alter table profiles add column if not exists age_years int;
+
 -- ═════════════════════════════════════════════════════════════════════════
 -- AUTH + ROW LEVEL SECURITY
 --

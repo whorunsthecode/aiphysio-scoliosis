@@ -10,6 +10,7 @@ import { XrayStep } from "@/components/onboarding/steps/XrayStep";
 import { ProgramStep } from "@/components/onboarding/steps/ProgramStep";
 import { LifestyleStep } from "@/components/onboarding/steps/LifestyleStep";
 import { PainStep } from "@/components/onboarding/steps/PainStep";
+import { SafetyStep } from "@/components/onboarding/steps/SafetyStep";
 import { initialOnboardingState } from "@/lib/onboarding/initialState";
 import { saveProfile } from "@/lib/onboarding/persist";
 import { STEPS, type OnboardingState } from "@/lib/onboarding/types";
@@ -106,8 +107,18 @@ export default function OnboardingPage() {
             state={state}
             update={update}
             onBack={goBack}
+            onNext={goNext}
+            onSkip={goNext}
+            saving={false}
+          />
+        );
+      case "safety":
+        return (
+          <SafetyStep
+            state={state}
+            update={update}
+            onBack={goBack}
             onNext={finish}
-            onSkip={finish}
             saving={saving}
           />
         );

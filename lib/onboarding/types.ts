@@ -79,6 +79,15 @@ export type OnboardingState = {
   };
 
   pain: PainPoint[];
+
+  // Age in years. Only consumer today is the red-flag screen, which treats a
+  // left-convex thoracic curve differently before skeletal maturity.
+  ageYears?: number | null;
+
+  // Answers to the red-flag screen, keyed by question id. Undefined means
+  // unanswered, which is deliberately not the same as false — see
+  // lib/safety/redFlags.ts.
+  safetyScreen?: Record<string, boolean | undefined>;
 };
 
 export const STEPS = [
@@ -89,6 +98,10 @@ export const STEPS = [
   { id: "program", title: "Physio program" },
   { id: "lifestyle", title: "Lifestyle" },
   { id: "pain", title: "How you feel" },
+  // Last, on purpose. By this point we know the curve pattern the derived
+  // rules need, and the user has enough context to read a flag as care
+  // rather than as the app refusing them at the door.
+  { id: "safety", title: "Safety check" },
 ] as const;
 
 export type StepId = (typeof STEPS)[number]["id"];
