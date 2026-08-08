@@ -1,0 +1,729 @@
+<title>Balance — Product Strategy</title>
+<style>
+  :root {
+    --ground: #F5F7F9;
+    --surface: #FFFFFF;
+    --surface-sunk: #ECEFF3;
+    --ink: #171C22;
+    --ink-soft: #4A5560;
+    --ink-faint: #767F8A;
+    --rule: #D9DFE6;
+    --rule-soft: #E7EBF0;
+    --accent: #0E6374;
+    --accent-soft: #DCEBEE;
+    --keep: #2A6249;
+    --keep-soft: #DEEBE4;
+    --cut: #A03F2C;
+    --cut-soft: #F4E2DD;
+    --shadow: 0 1px 2px rgba(23, 28, 34, .05), 0 8px 24px -16px rgba(23, 28, 34, .18);
+
+    --serif: ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0F1317;
+      --surface: #161B21;
+      --surface-sunk: #1B2128;
+      --ink: #E2E7ED;
+      --ink-soft: #A3AEBA;
+      --ink-faint: #7B8794;
+      --rule: #2A323B;
+      --rule-soft: #222931;
+      --accent: #5FBACD;
+      --accent-soft: #12303A;
+      --keep: #7CC3A1;
+      --keep-soft: #14291F;
+      --cut: #E09480;
+      --cut-soft: #2E1A15;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -16px rgba(0, 0, 0, .8);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0F1317;
+    --surface: #161B21;
+    --surface-sunk: #1B2128;
+    --ink: #E2E7ED;
+    --ink-soft: #A3AEBA;
+    --ink-faint: #7B8794;
+    --rule: #2A323B;
+    --rule-soft: #222931;
+    --accent: #5FBACD;
+    --accent-soft: #12303A;
+    --keep: #7CC3A1;
+    --keep-soft: #14291F;
+    --cut: #E09480;
+    --cut-soft: #2E1A15;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -16px rgba(0, 0, 0, .8);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 0 24px 120px;
+  }
+
+  /* ---------- masthead ---------- */
+  .masthead {
+    padding: 72px 0 40px;
+    border-bottom: 2px solid var(--ink);
+    margin-bottom: 8px;
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 20px;
+  }
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(38px, 6.5vw, 58px);
+    line-height: 1.04;
+    letter-spacing: -.02em;
+    font-weight: 600;
+    margin: 0 0 20px;
+    text-wrap: balance;
+  }
+  .standfirst {
+    font-size: 20px;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    margin: 0;
+    max-width: 60ch;
+  }
+  .byline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-faint);
+    padding: 14px 0 0;
+    letter-spacing: .04em;
+  }
+
+  /* ---------- structure ---------- */
+  section { padding-top: 56px; }
+  h2 {
+    font-family: var(--serif);
+    font-size: 30px;
+    line-height: 1.18;
+    letter-spacing: -.015em;
+    font-weight: 600;
+    margin: 0 0 6px;
+    text-wrap: balance;
+  }
+  h2 + .dek {
+    color: var(--ink-faint);
+    font-size: 15.5px;
+    margin: 0 0 26px;
+    max-width: 58ch;
+  }
+  h3 {
+    font-family: var(--sans);
+    font-size: 15px;
+    font-weight: 650;
+    letter-spacing: .01em;
+    margin: 34px 0 10px;
+  }
+  p { margin: 0 0 17px; max-width: 68ch; }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+  strong { font-weight: 650; }
+  code {
+    font-family: var(--mono);
+    font-size: .855em;
+    background: var(--surface-sunk);
+    padding: 1.5px 5px;
+    border-radius: 3px;
+    color: var(--ink);
+  }
+  ul, ol { margin: 0 0 17px; padding-left: 22px; max-width: 68ch; }
+  li { margin-bottom: 8px; }
+  li::marker { color: var(--ink-faint); }
+
+  /* ---------- devices ---------- */
+  .verdict {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    border-radius: 3px;
+    padding: 22px 26px;
+    margin: 0 0 26px;
+    box-shadow: var(--shadow);
+  }
+  .verdict p:last-child { margin-bottom: 0; }
+  .verdict .label {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: block;
+    margin-bottom: 10px;
+  }
+
+  .evidence {
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: 18px 0;
+    margin: 26px 0;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 20px;
+    align-items: baseline;
+  }
+  .evidence .figure {
+    font-family: var(--serif);
+    font-size: 32px;
+    font-weight: 600;
+    color: var(--accent);
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .evidence .body { font-size: 15.5px; color: var(--ink-soft); }
+  .evidence .body p { margin: 0 0 8px; }
+  .evidence .body p:last-child { margin: 0; }
+  .src { font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint); }
+
+  .task {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px 16px;
+    padding: 13px 0;
+    border-bottom: 1px solid var(--rule-soft);
+    align-items: baseline;
+  }
+  .task:last-child { border-bottom: 0; }
+  .task .what { font-size: 15.5px; }
+  .task .what b { font-weight: 650; }
+  .task .effort {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+    white-space: nowrap;
+    letter-spacing: .03em;
+  }
+  .task .why {
+    grid-column: 1 / -1;
+    font-size: 14px;
+    color: var(--ink-faint);
+    max-width: 64ch;
+  }
+
+  .pill {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: 2.5px 8px;
+    border-radius: 2px;
+    vertical-align: 1.5px;
+  }
+  .pill.keep { background: var(--keep-soft); color: var(--keep); }
+  .pill.cut { background: var(--cut-soft); color: var(--cut); }
+  .pill.hold { background: var(--accent-soft); color: var(--accent); }
+
+  /* ---------- tables ---------- */
+  .scroller { overflow-x: auto; margin: 24px 0; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 560px;
+    font-size: 14.5px;
+  }
+  th, td {
+    text-align: left;
+    padding: 11px 14px 11px 0;
+    border-bottom: 1px solid var(--rule-soft);
+    vertical-align: top;
+  }
+  thead th {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    border-bottom: 1px solid var(--rule);
+    font-weight: 400;
+    white-space: nowrap;
+  }
+  tbody th { font-weight: 650; padding-right: 20px; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  /* ---------- weeks ---------- */
+  .week {
+    display: grid;
+    grid-template-columns: 76px 1fr;
+    gap: 18px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  .week .n {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    padding-top: 3px;
+  }
+  .week h4 { margin: 0 0 6px; font-size: 15.5px; font-weight: 650; }
+  .week p { margin: 0; font-size: 14.5px; color: var(--ink-soft); }
+
+  details {
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 0 18px;
+    margin: 20px 0;
+    background: var(--surface);
+  }
+  summary {
+    cursor: pointer;
+    padding: 14px 0;
+    font-size: 14.5px;
+    font-weight: 650;
+    list-style-position: outside;
+  }
+  details[open] summary { border-bottom: 1px solid var(--rule-soft); margin-bottom: 14px; }
+  details > *:last-child { margin-bottom: 16px; }
+
+  hr.sep {
+    border: 0;
+    border-top: 1px solid var(--rule);
+    margin: 0;
+  }
+
+  footer {
+    margin-top: 72px;
+    padding-top: 24px;
+    border-top: 2px solid var(--ink);
+    font-size: 14px;
+    color: var(--ink-faint);
+  }
+  footer p { max-width: 68ch; }
+
+  @media (max-width: 560px) {
+    body { font-size: 16px; }
+    .evidence { grid-template-columns: 1fr; }
+    .week { grid-template-columns: 1fr; gap: 4px; }
+    .task { grid-template-columns: 1fr; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">Product strategy · Balance</p>
+    <h1>You built the half nobody else is building. Stop defending the half you can't win.</h1>
+    <p class="standfirst">Measurement is closed — a cleared competitor took it. The coaching layer underneath it is open, proven to work in a randomised trial, and is exactly what these 20,000 lines already do.</p>
+    <div class="byline">
+      <span>8 August 2026</span>
+      <span>Branch: claude/medtech-incubator-pitch-ojrr3y</span>
+      <span>Two commits shipped</span>
+    </div>
+  </header>
+
+  <section>
+    <h2>The verdict</h2>
+    <p class="dek">What this product is, in one paragraph, without flattery.</p>
+
+    <div class="verdict">
+      <span class="label">Bottom line</span>
+      <p>Balance is two products fused together, and they are pulling in opposite directions. One is a <strong>measurement instrument that does not currently measure</strong> — the posture scan's numbers are dominated by camera setup, not by the person in front of it. The other is a <strong>curve-pattern-aware coaching and adherence system</strong> that encodes real clinical judgement and that, as far as I can verify, nobody else has built for consumers.</p>
+      <p>The first one is now unwinnable: Momentum Health has FDA clearance for smartphone scoliosis monitoring using 3D reconstruction. The second one is not just open, it has Level 1 evidence behind it. Cut the first, go all-in on the second.</p>
+    </div>
+
+    <p>This is not a downgrade. Measurement was always the most expensive, most regulated, most technically hostile surface in the product, and it was the one where a solo founder had the worst odds. Someone just took it off your plate and, in doing so, made the layer above it more valuable.</p>
+  </section>
+
+  <hr class="sep">
+
+  <section>
+    <h2>What the code actually does</h2>
+    <p class="dek">Verified by reading the repo and by simulating the camera geometry. All three findings are now fixed and pushed.</p>
+
+    <p>The posture scan reported millimetre asymmetries that were substantially artifacts of the measurement setup. Three independent causes, all in the scan path.</p>
+
+    <h3>The rotation gate was measuring body shape</h3>
+    <p>The scan runs MoveNet, which carries no depth, so <code>bodyRotationDeg()</code> always fell back to comparing shoulder width against hip width. Yaw foreshortens both spans by the same <code>cos θ</code>, so the ratio barely moves. Porting the formula and sweeping true rotation:</p>
+
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>True yaw</th><th>0°</th><th>5°</th><th>15°</th><th>30°</th></tr>
+        </thead>
+        <tbody>
+          <tr><th>App's estimate</th><td class="num">6.00°</td><td class="num">6.00°</td><td class="num">6.04°</td><td class="num">6.14°</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Flat. What it measured was the subject's shoulder-to-hip build, which produced two failure modes at once. Anyone whose shoulder and hip widths differ by more than 20% sat permanently above the 5° rejection threshold and <strong>could never complete a scan</strong>, no matter how they stood. An even-built subject stayed under it at any real rotation.</p>
+
+    <h3>Yaw inside tolerance fabricated clinical-magnitude asymmetry</h3>
+    <p>On a <em>perfectly symmetric</em> body — zero real asymmetry — projected through a pinhole model:</p>
+
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>Setup</th><th>2° yaw</th><th>3°</th><th>5°</th></tr>
+        </thead>
+        <tbody>
+          <tr><th>Laptop, 0.8 m, camera ≈ hip height</th><td class="num">8.7 mm</td><td class="num">13.1 mm</td><td class="num">21.8 mm</td></tr>
+          <tr><th>Laptop, 1.5 m</th><td class="num">4.7 mm</td><td class="num">7.0 mm</td><td class="num">11.6 mm</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Those are phantom shoulder differentials. <code>cascade.ts</code> fires its <code>shoulder_asymmetry</code> stage at 12 mm; <code>thresholds.ts</code> calls anything past 15 mm "significant." A symmetric person standing 3° off-square at a normal laptop distance trips both. Which metric gets corrupted depends on camera height — the landmark pair further from the optical axis takes the hit.</p>
+
+    <p><code>pelvicRotationMm</code> is the worst case, because it is derived from left-versus-right torso length, which is definitionally what yaw changes. It is not a pelvis measurement; it is a rotation measurement wearing a pelvis label.</p>
+
+    <h3>The scale anchor, and why the trend engine can't save it</h3>
+    <p><code>TORSO_LENGTH_MM = 500</code> means every value is multiplied by 500 ÷ the user's real torso length. The invariant check now demonstrates this directly:</p>
+
+    <div class="evidence">
+      <div class="figure">33.2 / 27.9 / 24.1</div>
+      <div class="body">
+        <p>Millimetres reported for an <em>identical</em> 4° shoulder tilt, for torso lengths of 420, 500 and 580 mm. A 38% spread with no change in the person.</p>
+        <p class="src">npm run check:pose</p>
+      </div>
+    </div>
+
+    <p>And <code>trend.ts:166</code> declares "improving" or "drifting" when change exceeds 1.5 × mean std — where that std comes from frame jitter across ten seconds of <em>one</em> standing. The dominant error is between-session: you re-place the laptop, stand differently, wear different clothes. That error is entirely absent from the noise floor, so the trend engine compares a real signal against the wrong denominator and will confidently announce progress that is a repositioned laptop.</p>
+
+    <div class="verdict">
+      <span class="label">Shipped on this branch</span>
+      <p><code>bodyRotationDeg()</code> now returns <code>null</code> rather than fabricating a value, with a <code>rotationVerified</code> flag and confidence capped when yaw was never observable. An aspect-ratio bug found along the way — horizontal spans scaled by a vertically-derived factor, distorting them up to 1.78× on 16:9 — is corrected. Four scale-invariant metrics added. Snapshots carry <code>metricsVersion</code> so statistics never pool across pipelines. Seventeen property checks under <code>npm run check:pose</code>, in a repo that previously had no tests.</p>
+    </div>
+  </section>
+
+  <hr class="sep">
+
+  <section>
+    <h2>The competitive reality</h2>
+    <p class="dek">Verified against current sources, not memory.</p>
+
+    <h3>Momentum Health owns measurement</h3>
+    <p>Momentum Spine (formerly SeeSpine) has <strong>FDA 510(k) clearance</strong> for an AI-enabled mobile app that turns a 30-second smartphone video into a true-to-scale 3D torso model, quantifies asymmetries, and tracks curve progression. Available over the counter for ages 8+, also prescribable. Under trial at Children's Hospital Los Angeles and referenced by Cedars-Sinai.</p>
+
+    <p>They did it properly — 3D reconstruction from a moving camera sidesteps every single-view problem quantified above. You are not going to beat that with frontal pose landmarks.</p>
+
+    <div class="verdict">
+      <span class="label">But read what it doesn't do</span>
+      <p>Momentum Spine <strong>does not prescribe exercise.</strong> It routes users to educational content by curve type and gives clinicians data to guide <em>their</em> prescriptions. Every measurement, including the AI Cobb angle, must be reviewed by a licensed clinician. One provider describes it as giving "a solid framework and extra data to guide my exercise prescriptions."</p>
+      <p>A monitoring tool that raises scan frequency from every six months to every few weeks manufactures a stream of "your curve moved" moments with nothing attached to them. That is a demand generator for the product you already have.</p>
+    </div>
+
+    <h3>Feature matrix</h3>
+    <div class="scroller">
+      <table>
+        <thead>
+          <tr><th>Capability</th><th>Momentum</th><th>ScoliCare</th><th>Hinge / Sword</th><th>Balance</th></tr>
+        </thead>
+        <tbody>
+          <tr><th>Validated curve measurement</th><td>Yes, cleared</td><td>In clinic</td><td>No</td><td><span class="pill cut">No</span></td></tr>
+          <tr><th>Curve-pattern-aware programme</th><td>Content only</td><td>Yes, clinician-set</td><td>No</td><td><span class="pill keep">Yes</span></td></tr>
+          <tr><th>Contraindication gating</th><td>No</td><td>Clinician judgement</td><td>No</td><td><span class="pill keep">Yes</span></td></tr>
+          <tr><th>Real-time form feedback</th><td>No</td><td>No</td><td>Yes, generic</td><td><span class="pill keep">Yes, side-specific</span></td></tr>
+          <tr><th>Daily adherence loop</th><td>No</td><td>No</td><td>Yes</td><td><span class="pill keep">Yes</span></td></tr>
+          <tr><th>Clinician handoff document</th><td>Data sharing</td><td>Own software</td><td>Payer reporting</td><td><span class="pill keep">Yes</span></td></tr>
+          <tr><th>Serves scoliosis at all</th><td>Yes</td><td>Yes</td><td><strong>No</strong></td><td>Yes</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><strong>ScoliCare / ScoliBalance</strong> is the closest on coaching — a genuine SOSORT-aligned PSSE programme built by Jeb McAviney from CBP, SEAS and Schroth. But it is clinic-delivered: learned in-clinic, practised at home, and its software (SimpleSet for ScoliBalance) is a <em>provider</em> prescription tool. No consumer daily loop, no form check, no automated between-visit telemetry.</p>
+
+    <p><strong>Digital MSK does not touch scoliosis.</strong> Hinge, Sword and Kaia cover back, neck, shoulder, knee and hip. No scoliosis programme at any of them — structurally, because their buyer is an employer paying for adult low-back pain, while AIS is paediatric, certification-gated and harm-capable. Note that Sword acquired Kaia in January 2026: that market is consolidating, and consolidating away from condition-specific niches.</p>
+  </section>
+
+  <hr class="sep">
+
+  <section>
+    <h2>Your thesis is already proven</h2>
+    <p class="dek">The single most important thing found in this research.</p>
+
+    <div class="evidence">
+      <div class="figure">−4.23°</div>
+      <div class="body">
+        <p>Mean difference in Cobb angle improvement at six months, digitally-supported home PSSE versus conventional care. 95% CI −6.08 to −2.39, intention-to-treat; −4.01° per-protocol.</p>
+        <p class="src">JAMA Network Open, Feb 2025 · n=128, ages 9–17, Cobb ≥10°, skeletally immature · Peking Union Medical College Hospital</p>
+      </div>
+    </div>
+
+    <p>The control arm was three physiotherapist sessions plus unsupervised home exercise — that is, the current standard of care. The intervention was fully remote, home-based PSSE supported by a digital care system.</p>
+
+    <p>Put the effect size in context: 5° is the conventional threshold for declaring progression, and roughly the inter-observer error on Cobb measurement itself. This is a real effect, on the actual clinical endpoint, from the <em>supervision and adherence layer</em> — not from better measurement.</p>
+
+    <div class="verdict">
+      <span class="label">What this means for you</span>
+      <p>You do not have to prove that digitally-supported scoliosis exercise works. It is published, randomised, and in a top-tier journal. What is unbuilt is a good consumer product that delivers it — and that is the thing you have twenty thousand lines of.</p>
+    </div>
+
+    <p>The adherence literature closes the loop. PSSE efficacy shows a clear dose-response relationship with compliance, home programmes show a general trend of declining participation over time, and one study reports 93% accuracy using six-month PSSE compliance to predict curve regression. <strong>Adherence is the mechanism.</strong> It is also the thing software is uniquely good at, and the thing your Companion agent already does with unusual restraint.</p>
+  </section>
+
+  <hr class="sep">
+
+  <section>
+    <h2>The reframe</h2>
+
+    <div class="verdict">
+      <span class="label">What Balance is</span>
+      <p>Not "an app that measures your scoliosis." <strong>The adherence and coaching layer for scoliosis-specific exercise — the thing that makes a physio's prescription actually happen on the other six days of the week.</strong></p>
+      <p>Measurement becomes an <em>input</em> you accept from better sources — the user's clinician, their X-ray report, and eventually Momentum — rather than a claim you make.</p>
+    </div>
+
+    <p>This reframe does four things at once. It puts you on the side of the evidence rather than fighting it. It makes Momentum a partner rather than a competitor — they measure, you coach, and neither product is complete alone. It keeps you clear of the regulatory line, because delivering a clinician's prescription is a fundamentally safer claim than generating one. And it plays to the part of the codebase that is genuinely hard to copy.</p>
+
+    <p>The honest risk: coaching is an obvious adjacency for Momentum. They have the clearance, the clinician relationships and the hospital channel. Your defence is being far enough ahead on the coaching product that partnering beats building — which argues for going hard at adherence now and not spending another month on the webcam.</p>
+  </section>
+
+  <hr class="sep">
+
+  <section>
+    <h2>What to measure instead</h2>
+    <p class="dek">Three replacements, in descending order of how much they earn their place.</p>
+
+    <h3>1. Angle of trunk rotation, via the phone as an inclinometer</h3>
+    <p>A phone held across the back in forward flexion <em>is</em> a Bunnell scoliometer. This is the highest-value addition available to the product, and I verified it before recommending it:</p>
+
+    <div class="evidence">
+      <div class="figure">ρ = 0.97</div>
+      <div class="body">
+        <p>Correlation between smartphone-app ATR and the physical scoliometer. Intra-observer ICC 0.965 and inter-observer 0.964 for a smartphone app, against 0.954 / 0.943 for the Bunnell device itself — the phone is <em>at least as repeatable</em> as the instrument it replaces.</p>
+        <p class="src">Multiple validation studies; smartphone with a 3D-printed holder reaches ICC ≥ 0.99</p>
+      </div>
+    </div>
+
+    <p>No machine learning in the loop. Robust to camera yaw, because it measures a slope rather than a projected length. It has a published referral threshold — 7° ATR — and it is the measurement a clinician recognises instantly. It is also precisely the measurement Hong Kong's school screening programme runs.</p>
+
+    <h3>2. Performance metrics you can time with a clock</h3>
+    <p>Side-plank hold time on the convex side, Sorensen hold, single-leg balance, lateral flexion reach. Reliable to the second, clinically relevant in PSSE, responsive on a two-to-four-week timescale, and — critically — the user <em>feels</em> them improve. Your form checker already watches that exercise. The left/right side-bridge ratio is a defensible headline asymmetry number in a way no webcam millimetre is.</p>
+
+    <h3>3. Patient-reported outcomes</h3>
+    <p>The Patient-Specific Functional Scale at onboarding and monthly, pain daily, SRS-22r monthly, and a "good days" counter. These are validated, they are what a clinician and a payer both want to see, and they need no camera at all. PSFS is the single highest-value addition here: three activities the patient chooses themselves, which makes the feedback loop personal by construction.</p>
+
+    <div class="verdict">
+      <span class="label">And publish your detection limit</span>
+      <p>No consumer posture app states an MDC. "We can detect changes of X° or larger, and we will not claim anything smaller" is a stronger position than any accuracy boast — unfalsifiable in the good sense, because it is a limitation rather than a claim. In a category full of fake scores going up, honest uncertainty is a differentiator a growth-metric-driven competitor structurally cannot copy. It is also the natural voice of a founder who is also the patient.</p>
+    </div>
+  </section>
+
+  <hr class="sep">
+
+  <section>
+    <h2>What to cut</h2>
+    <p class="dek">Every item here is currently costing you credibility, engineering time, or both.</p>
+
+    <div class="task">
+      <div class="what"><b>Trend labels driven by frame jitter</b></div>
+      <div class="effort"><span class="pill cut">Cut now</span></div>
+      <div class="why">The most dangerous logic in the repo. It manufactures false reassurance and false alarm about a spinal condition, and it is the first thing that fails clinical scrutiny. Re-gate on an empirically measured between-session MDC or say nothing.</div>
+    </div>
+    <div class="task">
+      <div class="what"><b>Millimetres anywhere in the UI</b></div>
+      <div class="effort"><span class="pill cut">Cut now</span></div>
+      <div class="why">False precision on a health measure is worse than no measure. Angles and ratios are already in the codebase as of this branch.</div>
+    </div>
+    <div class="task">
+      <div class="what"><b>Cascade stages presented as personalised prediction</b></div>
+      <div class="effort"><span class="pill cut">Reframe</span></div>
+      <div class="why">Hand-authored rule chains over unreliable units. Reframe as "things to watch for with your curve pattern" — still useful, no credibility risk.</div>
+    </div>
+    <div class="task">
+      <div class="what"><b>Further sophistication in the multi-agent analytics layer</b></div>
+      <div class="effort"><span class="pill hold">Freeze</span></div>
+      <div class="why">The most impressive and least retention-relevant part of the codebase. It reads as a builder's project rather than a founder's product. Freeze until there is more than one real user.</div>
+    </div>
+    <div class="task">
+      <div class="what"><b>The X-ray reader as a headline feature</b></div>
+      <div class="effort"><span class="pill hold">De-emphasise</span></div>
+      <div class="why">Highest regulatory exposure in the product for modest benefit. Keep it as an optional convenience for transcribing a report the user already has; never let it look like image interpretation.</div>
+    </div>
+    <div class="task">
+      <div class="what"><b>Native app plans</b></div>
+      <div class="effort"><span class="pill hold">Defer</span></div>
+      <div class="why">The only genuine native trigger is depth sensing to fix the scale anchor — and you are no longer trying to win at scale-anchored measurement.</div>
+    </div>
+  </section>
+
+  <hr class="sep">
+
+  <section>
+    <h2>What to amplify</h2>
+    <p class="dek">Assets already in the repo that a competitor cannot quickly reproduce.</p>
+
+    <h3>The contraindication engine</h3>
+    <p><code>lib/exercises/contraindications.ts</code> is the most defensible thing in the codebase. Absolute / relative / ask-physio severities, plus contextual rules like side-plank-must-be-convex-thoracic-side-down, are real clinical judgement encoded as software. Generic CV engines have no structural reason to build this. <strong>Make it visible</strong> — "I removed two exercises from today's plan, here's why" is simultaneously a safety feature, a trust feature and the clearest one-session demonstration that Balance is different. Attach a cited source to each rule.</p>
+
+    <h3>physio_cleared mode</h3>
+    <p>Treating the physio's prescription as authoritative is a strategically excellent design choice that is currently buried as an implementation detail. It sidesteps regulatory exposure, respects the clinician instead of competing with them, and makes Balance a delivery mechanism rather than a rival opinion. Horizontal MSK players are structurally trying to <em>replace</em> the physio; you are the only one trying to serve one. Build the clinician-facing side of this.</p>
+
+    <h3>Side-specific real-time form checking on commodity hardware</h3>
+    <p>The hardest thing in the repo, and the closest to what Sword needed hardware and Hinge needed a human care team to deliver. Nobody's generic engine knows which side your plank should be on.</p>
+
+    <h3>You, as the instrumented patient</h3>
+    <p>Genuinely rare and currently under-exploited. It gets you meetings with scoliosis physios that no generic health-tech founder can get, it lets you run perturbation experiments on yourself daily at zero cost with no ethics delay, and it means you can recruit ten to thirty fellow patients who will tolerate a rough product and give honest feedback. Cohort, not code, is what the next stage needs.</p>
+
+    <h3>Hong Kong</h3>
+    <p>A compact city with a government school screening programme running the exact measurement you should be building, PolyU and Scolioscan on the doorstep as a radiation-free measurement partner, and a dense clinical network. Not replicable by a US or European entrant.</p>
+
+    <div class="evidence">
+      <div class="figure">9.4%</div>
+      <div class="body">
+        <p>Positive predictive value for <em>needing treatment</em> among Hong Kong screening referrals — against 43.6% PPV for a curve ≥20°. Of 115,190 students screened, 3,228 (2.8%) were referred for radiography.</p>
+        <p class="src">Population cohort, 157,444 students followed to age 19</p>
+      </div>
+    </div>
+
+    <p>Read that gap carefully. The great majority of referred adolescents are told they have a curve and then <em>observed</em> — no bracing, no surgery, and frequently no structured exercise. That is a large, identified, anxious, underserved cohort sitting in your home city with nothing to do between appointments. It is the most specific wedge available to you.</p>
+  </section>
+
+  <hr class="sep">
+
+  <section>
+    <h2>The first eight weeks</h2>
+    <p class="dek">A real sequence — each week depends on the one before.</p>
+
+    <div class="week">
+      <div class="n">Week 1</div>
+      <div>
+        <h4>Auth, multi-tenancy, RLS, data export</h4>
+        <p>Nothing else is testable until a second person can hold an account, and a service-role key with no RLS over health data is a breach waiting to happen. This is the gate on everything below.</p>
+      </div>
+    </div>
+    <div class="week">
+      <div class="n">Week 2</div>
+      <div>
+        <h4>Red-flag triage and escalation</h4>
+        <p>Screen for progressive neurological deficit, night pain, unexplained weight loss, fever, cancer history, recent trauma, and scoliosis-specific flags — rapid progression, new adult onset, left thoracic curve in an adolescent. Output is never a diagnosis; always "stop and see a clinician" plus a shareable summary. Ship before any external user, not after.</p>
+      </div>
+    </div>
+    <div class="week">
+      <div class="n">Week 3</div>
+      <div>
+        <h4>Your own test–retest study</h4>
+        <p>Ten scans with full re-setup, spread over a week, matched for time of day. Compute the real between-session SEM and MDC. Re-gate <code>trend.ts</code> on that number and display the "too small to be real" band as a feature. Two weeks of your own data, one week of code.</p>
+      </div>
+    </div>
+    <div class="week">
+      <div class="n">Week 4</div>
+      <div>
+        <h4>ATR measurement via phone inclinometer</h4>
+        <p>Forward-bend flow, phone held across the back, guided by voice. This is the validated measurement — treat it as the primary one and demote the camera scan to a qualitative side-by-side photo.</p>
+      </div>
+    </div>
+    <div class="week">
+      <div class="n">Week 5</div>
+      <div>
+        <h4>Onboarding for someone with no physio programme</h4>
+        <p>Today's flow demands a curve pattern, segments, an X-ray and a physio programme. Most arrivals have "I was told I have scoliosis" and nothing else. Invert the defaults: <code>self_guided</code> is the main path, degrading personalisation safely when curve data is unknown.</p>
+      </div>
+    </div>
+    <div class="week">
+      <div class="n">Week 6</div>
+      <div>
+        <h4>The feedback loop that isn't the camera</h4>
+        <p>PSFS at onboarding, pain daily, a good-days counter, and a fortnightly timed check-in: side bridge left and right, Sorensen hold, single-leg balance. Headline the left/right side-bridge ratio.</p>
+      </div>
+    </div>
+    <div class="week">
+      <div class="n">Week 7</div>
+      <div>
+        <h4>Retention mechanics</h4>
+        <p>A three-minute floor session always one tap away — the largest single lever against all-or-nothing quitting. Implementation intentions captured at onboarding and quoted verbatim in every nudge. A tolerant streak: weeks with 3+ sessions, silent grace tokens, never reset totals, never surface missed-day counts on re-entry.</p>
+      </div>
+    </div>
+    <div class="week">
+      <div class="n">Week 8</div>
+      <div>
+        <h4>Ten real users</h4>
+        <p>Recruit from scoliosis communities and your own audience. Instrument retention properly first — you currently have no way to know whether anyone comes back. This is the week the product stops being a portfolio piece.</p>
+      </div>
+    </div>
+
+    <h3>Months 3–6</h3>
+    <ul>
+      <li><strong>Invert the LLM safety architecture.</strong> Generate the legal candidate set in TypeScript — library ∩ not-contraindicated ∩ dose-appropriate ∩ pain-gated — pass it to the model, and accept only an <em>ordering</em> back. Re-run <code>contraindications.ts</code> as the final gate after any model output. Add schema validation with a deterministic fallback.</li>
+      <li><strong>Replace the two-hourly Companion tick with a deterministic policy.</strong> Decide "should I nudge" in TypeScript; call the model only once the answer is already yes and personalisation is what's needed. Roughly 85% inference cost cut, and nudge behaviour becomes unit-testable.</li>
+      <li><strong>Build the clinician view.</strong> The Liaison handoff is the seed. A scoliosis physio wants adherence, pain trend, ATR trend and flagged concerns on one page before a fifteen-minute appointment.</li>
+      <li><strong>Traditional Chinese.</strong> A Hong Kong product for adolescents and their parents that ships English-only is not a Hong Kong product.</li>
+      <li><strong>Write up the N-of-1.</strong> Method, measurements, negative results included.</li>
+    </ul>
+  </section>
+
+  <hr class="sep">
+
+  <section>
+    <h2>The N-of-1 protocol</h2>
+    <p class="dek">Start this week. It costs nothing and it is the only real data you have access to.</p>
+
+    <p><strong>Phase 1 — reliability, two weeks.</strong> Twice per session, scan, walk fully away, re-scan. The difference between two repositioned scans is a direct empirical estimate of between-session sigma for your body, your phone, your room. Record time of day every time; diurnal spinal variation is real and needs controlling for. Output: your true MDC, which the product needs regardless of anything else.</p>
+
+    <p><strong>Phase 2 — an A-B-A-B withdrawal design.</strong> Two weeks on programme, two weeks off, repeated. Primary measures: convex-side side-plank hold time, daily pain, PSFS. This is a legitimate single-case experimental design, it is publishable as a case report, and it produces the first honest evidence that your specific product changes something.</p>
+
+    <p>Both phases produce three things simultaneously: the measurement science the product needs, a credible evidence artifact, and the founder story that no competitor can manufacture.</p>
+  </section>
+
+  <hr class="sep">
+
+  <section>
+    <h2>Risks and open questions</h2>
+
+    <h3>Things I would want answered before you build much further</h3>
+    <ul>
+      <li><strong>Was any of this built while you were at HSBC?</strong> IP assignment clauses in Hong Kong banking contracts are typically broad. If there is exposure, it is far cheaper to resolve now than after anyone diligences it.</li>
+      <li><strong>Do you have a physio in the loop who has seen the handoff PDF?</strong> A named clinician willing to give a quote is worth more than any feature you could build this quarter.</li>
+      <li><strong>Are you willing to serve adolescents?</strong> That is where the clinical urgency and the Hong Kong screening cohort are — and it brings parental consent, safeguarding, body-image risk and a specific danger: telling a growing adolescent their curve looks stable when it is progressing. My recommendation is adults first, adolescents only once red-flag triage and a clinician relationship are both real.</li>
+      <li><strong>Schroth and BSPTS are certified, trademarked methods.</strong> Check what you can name and what you can only describe generically.</li>
+    </ul>
+
+    <h3>Standing risks</h3>
+    <ul>
+      <li><strong>Momentum extends into coaching.</strong> The most likely way this gets hard. Mitigation is speed on adherence and a partnership conversation earlier than feels comfortable.</li>
+      <li><strong>Free-tier model dependency.</strong> Groq and Gemini free tiers can deprecate or silently change models underneath a health product. Pin versions, keep an eval suite, and price the paid tier now.</li>
+      <li><strong>Solo capacity.</strong> The week-by-week plan above assumes sustained focus. The clinical co-founder question does not go away because the product got sharper.</li>
+    </ul>
+  </section>
+
+  <hr class="sep">
+
+  <section>
+    <h2>If you only do five things</h2>
+    <ol>
+      <li><strong>Stop claiming millimetres and stop labelling trends from frame jitter.</strong> Already shipped on this branch — now remove them from the UI.</li>
+      <li><strong>Add ATR via the phone inclinometer</strong> and make it the primary measurement. It is validated, it needs no ML, and it is what clinicians and the HK screening programme already use.</li>
+      <li><strong>Reframe the product as the adherence layer</strong> for scoliosis-specific exercise, with measurement as an input you accept rather than a claim you make.</li>
+      <li><strong>Build auth and red-flag triage, then get ten real users.</strong> Everything you believe about this product is currently untested against anyone but yourself.</li>
+      <li><strong>Run the N-of-1 on yourself, starting this week.</strong> Reliability first, then A-B-A-B.</li>
+    </ol>
+  </section>
+
+  <footer>
+    <p>Findings on the codebase were verified by reading the repository and simulating the camera geometry; the numbers quoted are reproducible via <code>npm run check:pose</code>. Competitive and clinical claims were verified against current published sources in August 2026. Three claims carried over from earlier analysis remain <em>unverified</em> and are flagged as such: surface-topography limits of agreement against Cobb angle, the magnitude of diurnal spinal variation, and torso length as a fraction of stature. Verify before quoting any of them externally.</p>
+  </footer>
+
+</div>
