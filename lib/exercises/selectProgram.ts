@@ -29,6 +29,7 @@ import type { BodyRegionId, CurvePatternKey, Exercise } from "./types";
 import type { OnboardingState, PainPoint } from "@/lib/onboarding/types";
 import type { ParsedProgram } from "@/lib/prompts/parseProgram";
 import type { PostureMeasurements } from "@/lib/pose/types";
+import type { TriageResult } from "@/lib/safety/types";
 
 const PAIN_SKIP_THRESHOLD = 7;
 const PAIN_REDUCE_THRESHOLD = 5;
@@ -78,6 +79,9 @@ export type SelectionInput = {
   pain?: PainPoint[];
   physioProgram?: ParsedProgram | null;
   physioClarifications?: Record<number, string>;
+  // Result of the red-flag screen, when one has been run. An emergency-tier
+  // flag stops a programme being produced at all — see lib/safety.
+  triage?: TriageResult | null;
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -86,6 +90,26 @@ export type SelectionInput = {
 
 export function selectProgram(input: SelectionInput): SelectionResult {
   const pattern = deriveCurvePattern(input.profile);
+
+  // An emergency-tier red flag stops here, ahead of every other branch. It is
+  // not appropriate to hand someone a movement programme — physio-prescribed
+  // or otherwise — while they are reporting symptoms that need same-day
+  // assessment. Enforcing it in the pure function rather than in the session
+  // page means the library view cannot route around it either.
+  if (input.triage?.blocksSession) {
+    return {
+      pattern,
+      mode: "self_guided",
+      exercises: [],
+      suggestions: [],
+      notes: [
+        "Today's programme is paused. What you've described needs looking at before you exercise.",
+      ],
+      warnings: input.triage.hits
+        .filter((h) => h.rule.severity === "emergency")
+        .map((h) => `${h.rule.observation} ${h.rule.action}`),
+    };
+  }
   const sides = deriveRegionalSides(input.profile);
   const stiffHipSide = inferStiffHipFlexorSide(input.profile);
   const physio = input.physioProgram;

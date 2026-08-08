@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "check:pose": "tsx scripts/check-pose-invariants.ts"
+    "check:pose": "tsx scripts/check-pose-invariants.ts",
+    "check:safety": "tsx scripts/check-safety.ts",
+    "check": "npm run typecheck && npm run check:pose && npm run check:safety"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.35",
