@@ -14,7 +14,8 @@
     "check:atr": "tsx scripts/check-atr.ts",
     "check:outcomes": "tsx scripts/check-outcomes.ts",
     "check:privacy": "tsx scripts/check-privacy.ts",
-    "check": "npm run typecheck && npm run check:pose && npm run check:safety && npm run check:repeatability && npm run check:atr && npm run check:outcomes && npm run check:privacy"
+    "check:messaging": "tsx scripts/check-messaging.ts",
+    "check": "npm run typecheck && npm run check:pose && npm run check:safety && npm run check:repeatability && npm run check:atr && npm run check:outcomes && npm run check:privacy && npm run check:messaging"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.35",

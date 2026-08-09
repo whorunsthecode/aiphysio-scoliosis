@@ -18,7 +18,7 @@ import {
 } from "@/lib/agents/context";
 import { COMPANION_SYSTEM_PROMPT } from "@/lib/agents/prompts";
 import { chatJSON } from "@/lib/groq";
-import { sendTelegramMessage } from "@/lib/telegram";
+import { deliver } from "@/lib/messaging/deliver";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -130,14 +130,16 @@ async function runCompanion(req: Request, manual: boolean) {
   switch (decision.action) {
     case "SEND": {
       if (!decision.telegram_message) break;
-      const sent = await sendTelegramMessage(decision.telegram_message);
-      if (sent.ok) {
-        await supabase.from("notifications").insert({
-          profile_id: profileId,
-          sent_by_agent: "companion",
-          message_text: decision.telegram_message,
-        });
-      }
+      const sent = await deliver({
+        supabase,
+        profileId,
+        agent: "companion",
+        text: decision.telegram_message,
+        kind: "nudge",
+      });
+      // deliver() writes the notification row itself — inserting again here
+      // would double-count nudges against the 2-per-24h cap.
+      void sent;
       break;
     }
     case "MARK": {

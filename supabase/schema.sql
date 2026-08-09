@@ -265,6 +265,23 @@ create index if not exists sessions_source on sessions(source);
 -- it when planning so the messaging stays connected to lived motivation.
 alter table profiles add column if not exists goal_text text;
 
+-- ─── In-app inbox (lib/messaging) ───
+-- notifications becomes the delivery record of truth. Telegram is now an
+-- optional mirror rather than the channel: health data leaving to a consumer
+-- messaging platform is not something an ethics committee will accept, and
+-- identifiable clinical documents must never go that way at all.
+alter table notifications add column if not exists read_at timestamptz;
+alter table notifications add column if not exists kind text default 'message';
+alter table notifications add column if not exists document_path text;
+alter table notifications alter column channel set default 'in_app';
+create index if not exists notifications_unread
+  on notifications(profile_id) where read_at is null;
+
+-- ─── Telegram opt-in, per profile ───
+-- Off unless the user turns it on, and never carries clinical documents.
+alter table profiles add column if not exists telegram_opt_in boolean default false;
+alter table profiles add column if not exists telegram_chat_id text;
+
 -- ─── Red-flag screen (lib/safety) ───
 -- Answers keyed by question id. Stored so the screen can be re-run against a
 -- changed ruleset and so Liaison can carry it into a handoff document.

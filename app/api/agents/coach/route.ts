@@ -16,7 +16,7 @@ import {
 } from "@/lib/agents/context";
 import { COACH_SYSTEM_PROMPT } from "@/lib/agents/prompts";
 import { chatJSON } from "@/lib/groq";
-import { sendTelegramMessage } from "@/lib/telegram";
+import { deliver } from "@/lib/messaging/deliver";
 import { getExerciseById } from "@/lib/exercises/library";
 import {
   deriveCurvePattern,
@@ -115,8 +115,12 @@ async function runCoach(req: Request, manual: boolean) {
   // Telegram + Companion handoff + message-processing in parallel.
   // Coach formats its messages with HTML tags (b, i, pre) per the prompt
   // contract so Telegram renders the schedule as a monospace grid.
-  const sendResult = await sendTelegramMessage(output.telegram_message, {
-    parseMode: "HTML",
+  const sendResult = await deliver({
+    supabase,
+    profileId,
+    agent: "coach",
+    text: output.telegram_message,
+    kind: "program",
   });
 
   await Promise.all([
@@ -141,7 +145,8 @@ async function runCoach(req: Request, manual: boolean) {
   return NextResponse.json({
     ok: true,
     week_start: weekStart,
-    telegram_sent: sendResult.ok,
+    delivered_in_app: sendResult.inApp,
+    mirrored_to_telegram: sendResult.mirrored,
   });
 }
 

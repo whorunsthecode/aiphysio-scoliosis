@@ -12,7 +12,7 @@ import {
 import { buildContext, serializeContext } from "@/lib/agents/context";
 import { LIAISON_SYSTEM_PROMPT } from "@/lib/agents/prompts";
 import { chatJSON } from "@/lib/groq";
-import { sendTelegramDocument, sendTelegramMessage } from "@/lib/telegram";
+import { deliver } from "@/lib/messaging/deliver";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -172,23 +172,18 @@ async function runLiaison(req: Request, manual: boolean) {
   ]);
 
   // Send Telegram message + (if PDF available) attach as document.
-  if (pdfStoragePath) {
-    const pdfDownload = await supabase.storage
-      .from("documents")
-      .download(pdfStoragePath);
-    if (pdfDownload.data) {
-      const buf = new Uint8Array(await pdfDownload.data.arrayBuffer());
-      await sendTelegramDocument(
-        buf,
-        `physio-prep-${appointment.appointment_at.slice(0, 10)}.pdf`,
-        output.telegram_intro_message,
-      );
-    } else {
-      await sendTelegramMessage(output.telegram_intro_message);
-    }
-  } else {
-    await sendTelegramMessage(output.telegram_intro_message);
-  }
+  // The handoff is an identifiable clinical document. It stays on-platform:
+  // delivered to the inbox with a pointer to the stored file, never attached
+  // to a consumer messaging service. deliver() enforces this regardless of
+  // what any caller asks for.
+  await deliver({
+    supabase,
+    profileId,
+    agent: "liaison",
+    text: output.telegram_intro_message,
+    kind: "document",
+    documentPath: pdfStoragePath ?? null,
+  });
 
   await supabase.from("notifications").insert({
     profile_id: profileId,
