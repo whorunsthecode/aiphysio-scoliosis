@@ -13,7 +13,8 @@
     "check:repeatability": "tsx scripts/check-repeatability.ts",
     "check:atr": "tsx scripts/check-atr.ts",
     "check:outcomes": "tsx scripts/check-outcomes.ts",
-    "check": "npm run typecheck && npm run check:pose && npm run check:safety && npm run check:repeatability && npm run check:atr && npm run check:outcomes"
+    "check:privacy": "tsx scripts/check-privacy.ts",
+    "check": "npm run typecheck && npm run check:pose && npm run check:safety && npm run check:repeatability && npm run check:atr && npm run check:outcomes && npm run check:privacy"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.35",

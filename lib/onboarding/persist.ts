@@ -1,5 +1,7 @@
 import type { OnboardingState } from "./types";
 
+import { sanitiseForLocalStorage } from "@/lib/privacy/data";
+
 const STORAGE_KEY = "balance.profile";
 
 function isSupabaseConfigured(): boolean {
@@ -37,9 +39,14 @@ export type SaveResult =
 export async function saveProfile(state: OnboardingState): Promise<SaveResult> {
   if (typeof window !== "undefined") {
     try {
+      // Never the raw state: it carries a base64 X-ray and the red-flag
+      // screen answers, neither of which belongs in browser storage.
       window.localStorage.setItem(
         STORAGE_KEY,
-        JSON.stringify({ savedAt: new Date().toISOString(), state }),
+        JSON.stringify({
+          savedAt: new Date().toISOString(),
+          state: sanitiseForLocalStorage(state),
+        }),
       );
     } catch {
       // ignore quota errors; Supabase remains source of truth when available
