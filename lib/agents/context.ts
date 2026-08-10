@@ -6,6 +6,7 @@
 
 import { getServiceSupabase } from "./server-supabase";
 import { isCurrentMetrics } from "@/lib/pose/stats";
+import { redactForThirdParty } from "@/lib/privacy/data";
 
 export type AgentName = "coach" | "companion" | "liaison";
 
@@ -279,8 +280,15 @@ export async function buildContext(
 
 // Compact JSON-friendly view for LLM input. Strips heavy Snapshot internals
 // and keeps only what's useful for agent reasoning.
+// Everything an agent sees. This is the single point where user data leaves
+// for a model provider, so redaction happens here rather than at four call
+// sites — a chokepoint that cannot be forgotten beats a convention that can.
+//
+// The user's name is deliberately absent. Agents address the user as {name}
+// and deliver() substitutes the real one on the way to the inbox, so messages
+// stay personal without the name ever reaching a third party.
 export function serializeContext(ctx: UserContext): unknown {
-  return {
+  return redactForThirdParty({
     agent: ctx.agent,
     now: ctx.now,
     profile: ctx.profile
@@ -345,7 +353,7 @@ export function serializeContext(ctx: UserContext): unknown {
       message_type: m.message_type,
       payload: m.payload,
     })),
-  };
+  });
 }
 
 // Mark all currently-pending messages addressed to this agent as processed.

@@ -14,6 +14,7 @@ import {
   redactForThirdParty,
   sanitiseForLocalStorage,
 } from "@/lib/privacy/data";
+import { serializeContext } from "@/lib/agents/context";
 import { initialOnboardingState } from "@/lib/onboarding/initialState";
 import type { OnboardingState } from "@/lib/onboarding/types";
 
@@ -130,6 +131,79 @@ console.log("\nthird-party minimisation\n");
     "arrays of contexts are handled",
     !containsIdentifiers(redactForThirdParty([context, context])),
     "batched calls must be redacted too",
+  );
+}
+
+console.log("\nagent context leaving for a model provider\n");
+{
+  const ctx = {
+    agent: "coach",
+    now: "2026-08-10T00:00:00Z",
+    profile: {
+      id: "p-1",
+      name: "Karmen",
+      curve_type: "S",
+      primary_curve_apex: "lower_thoracic",
+      primary_curve_convex_side: "right",
+      goal_text: "travel without my back being the limit",
+    },
+    physioProgram: null,
+    baseline: null,
+    recentSessions: [
+      {
+        id: "s-1",
+        started_at: "2026-08-09T00:00:00Z",
+        completed_at: null,
+        pain_check: [{ location: "lumbar", intensity: 6, type: "ache" }],
+        exercises_completed: [],
+        final_scan: null,
+        initial_scan: null,
+        scan_confidence: "high",
+        source: "real",
+      },
+    ],
+    recentNotifications: [],
+    recentObservations: [],
+    pendingMessages: [],
+    correlations: [],
+    cascade: null,
+    activeProgram: null,
+    upcomingAppointments: [],
+    adherence: {
+      sessionsLast7Days: 3,
+      sessionsLast30Days: 9,
+      activeDaysLast7: 3,
+      averageExercisesPerSession: 4,
+    },
+  };
+
+  const wire = serializeContext(ctx as never);
+  const json = JSON.stringify(wire);
+
+  check(
+    "the user's name does not reach the model",
+    !json.includes("Karmen"),
+    `serializeContext is the single point where data leaves; got ${json.slice(0, 200)}`,
+  );
+  check(
+    "free-text goals do not reach the model",
+    !json.includes("travel without"),
+    "free text a user writes about their life is where identifying detail leaks",
+  );
+  check(
+    "internal ids do not reach the model",
+    !json.includes("p-1"),
+    "ids are identifiers and are useless to the model",
+  );
+  check(
+    "clinical context still reaches the model",
+    json.includes("lower_thoracic") && json.includes("lumbar"),
+    `redaction must not strip the reason for the call; got ${json.slice(0, 200)}`,
+  );
+  check(
+    "adherence figures survive",
+    json.includes("sessionsLast7Days") || json.includes("sessions_last_7"),
+    "adherence is what the agents reason about",
   );
 }
 

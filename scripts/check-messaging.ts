@@ -10,6 +10,7 @@ import {
   deliver,
   mayMirror,
   mirrorPointer,
+  personalise,
   type MessageKind,
 } from "@/lib/messaging/deliver";
 
@@ -45,6 +46,30 @@ function fakeSupabase(profile: Record<string, unknown> | null) {
   return client as unknown as Parameters<typeof deliver>[0]["supabase"] & {
     inserts: Record<string, unknown>[];
   };
+}
+
+console.log("\nname handling\n");
+{
+  check(
+    "a placeholder becomes the real name at delivery",
+    personalise("Morning, {name}.", "Karmen") === "Morning, Karmen.",
+    "the user should still be addressed by name",
+  );
+  check(
+    "a missing name reads naturally rather than leaving braces on screen",
+    personalise("Morning, {name}.", null) === "Morning, there.",
+    `got "${personalise("Morning, {name}.", null)}"`,
+  );
+  check(
+    "a blank name is treated as missing",
+    personalise("Hi {name}", "   ") === "Hi there",
+    "whitespace is not a name",
+  );
+  check(
+    "every occurrence is replaced, not just the first",
+    personalise("{name}, {name}", "A") === "A, A",
+    "a second placeholder would otherwise reach the user raw",
+  );
 }
 
 console.log("\ndelivery policy\n");
@@ -143,6 +168,24 @@ console.log("\nenforcement\n");
     "a missing profile suppresses the mirror rather than erroring open",
     noProfile.inApp && !noProfile.mirrored,
     `got ${JSON.stringify(noProfile)}`,
+  );
+
+  const sb5 = fakeSupabase({
+    name: "Karmen",
+    telegram_opt_in: false,
+    telegram_chat_id: null,
+  });
+  await deliver({
+    supabase: sb5,
+    profileId: "p1",
+    agent: "coach",
+    text: "Nice work this week, {name}.",
+    kind: "program",
+  });
+  check(
+    "the placeholder is substituted before the message is stored",
+    sb5.inserts.some((i) => i.message_text === "Nice work this week, Karmen."),
+    `got ${JSON.stringify(sb5.inserts.map((i) => i.message_text))}`,
   );
 
   check(

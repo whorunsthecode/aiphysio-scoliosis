@@ -51,6 +51,19 @@ export type DeliverInput = {
   documentPath?: string | null;
 };
 
+// Agents never receive the user's name — serializeContext withholds it. They
+// write {name} instead, and it is substituted here, at the last moment before
+// the message is stored. The name therefore never reaches a model provider
+// while the message the user reads is still addressed to them.
+//
+// An unsubstituted placeholder is worse than an impersonal message, so a
+// missing name falls back to something that reads naturally rather than
+// leaving braces on screen.
+export function personalise(text: string, name?: string | null): string {
+  const safe = (name ?? "").trim();
+  return text.replace(/\{name\}/g, safe.length > 0 ? safe : "there");
+}
+
 export type DeliverResult = {
   inApp: boolean;
   mirrored: boolean;
@@ -78,6 +91,14 @@ export async function deliver(input: DeliverInput): Promise<DeliverResult> {
     documentPath = null,
   } = input;
 
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("name, telegram_opt_in, telegram_chat_id")
+    .eq("id", profileId)
+    .maybeSingle();
+
+  const message = personalise(text, profile?.name as string | undefined);
+
   // In-app first and always. If the mirror fails afterwards the user has still
   // received the message; if this fails, nothing was delivered and the caller
   // needs to know.
@@ -85,7 +106,7 @@ export async function deliver(input: DeliverInput): Promise<DeliverResult> {
     profile_id: profileId,
     sent_by_agent: agent,
     channel: "in_app",
-    message_text: text,
+    message_text: message,
     kind,
     document_path: documentPath,
   });
@@ -94,12 +115,6 @@ export async function deliver(input: DeliverInput): Promise<DeliverResult> {
   if (!mayMirror(kind)) {
     return { inApp: true, mirrored: false, mirrorSuppressedBecause: "kind_never_mirrored" };
   }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("telegram_opt_in, telegram_chat_id")
-    .eq("id", profileId)
-    .maybeSingle();
 
   if (!profile?.telegram_opt_in) {
     return { inApp: true, mirrored: false, mirrorSuppressedBecause: "not_opted_in" };
@@ -110,7 +125,9 @@ export async function deliver(input: DeliverInput): Promise<DeliverResult> {
 
   try {
     const { sendTelegramMessage } = await import("@/lib/telegram");
-    await sendTelegramMessage(text, { chatId: profile.telegram_chat_id });
+    await sendTelegramMessage(message, {
+      chatId: profile.telegram_chat_id as string,
+    });
     return { inApp: true, mirrored: true };
   } catch {
     // A failed mirror is not a failed delivery — the message is in the inbox.
