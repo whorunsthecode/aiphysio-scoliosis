@@ -1,9 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-
-  "//": "The project had no framework preset (framework: null in project settings), so Vercel built Next.js successfully and then looked for a static public/ directory, failing every deployment with 'No Output Directory named public found'. Auto-detection most likely missed Next.js because a root-level /api directory is Vercel's zero-config convention for non-framework projects, and this repo has one for the Python TTS function. Declaring the framework here keeps the fix in version control rather than in dashboard settings nobody can see from the repo.",
   "framework": "nextjs",
-
   "crons": [
     { "path": "/api/cron/baselines",     "schedule": "0 3 * * *" },
     { "path": "/api/cron/correlations",  "schedule": "0 4 * * *" },
