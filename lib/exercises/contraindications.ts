@@ -6,6 +6,17 @@
 //                with a soft flag.
 //   ask_physio — heavy compounds, new sports, etc. Show with a "worth asking
 //                your physio" flag.
+//
+// EVIDENCE STATUS (clinical audit, docs/clinical-audit.md
+// `contraindication-list-folk-wisdom`): none of the movement bans below is
+// evidence-based for IDIOPATHIC scoliosis. SOSORT guidelines encourage sport
+// and general activity; there is no trial showing backbends, inversions,
+// loaded flexion or held twists worsen an idiopathic curve. They were
+// therefore downgraded from "absolute" to "relative": the app will not
+// auto-prescribe them and will surface them for a physio's judgement, but it
+// no longer tells a patient they are forbidden. Population-specific bans
+// (post-fusion, osteoporosis, pregnancy) are a different matter and live in
+// lib/safety — those are condition-based, not exercise-name-based.
 
 import type { CurvePatternKey } from "./types";
 import type { Side } from "@/lib/onboarding/types";
@@ -36,18 +47,21 @@ export type ContraindicationRule = {
 // the user's pattern. See `checkSidePlankSide`.
 
 export const CONTRAINDICATION_RULES: ContraindicationRule[] = [
-  // ──────────────────────────── ABSOLUTE ────────────────────────────
+  // ────────── MOVEMENT CAUTIONS — relative; none evidence-based for AIS ──────────
   {
     id: "wheel_pose_full_backbend",
-    category: "absolute",
+    category: "relative",
     title: "Full backbends",
     reason_user_facing:
-      "Full backbends like wheel pose put extreme load on the convex side of a curve. Your physio will choose specific extension work that's safer for your pattern.",
+      "Full backbends like wheel pose aren't shown to harm an idiopathic curve, but they load an asymmetric spine at end range. Not something this app will add on its own — fine if your physio has included it.",
     matches: {
       namePatterns: [
         /\bwheel\s*pose\b/i,
         /\bfull\s*back\s*bend\b/i,
         /\bchakr?asana\b/i,
+        // Both word orders: "full bridge" was the exact banned phrase and the
+        // old pattern only matched "bridge full".
+        /\bfull\s*bridge\b/i,
         /\bbridge\s*(?:full|complete)\b/i,
       ],
     },
@@ -55,10 +69,10 @@ export const CONTRAINDICATION_RULES: ContraindicationRule[] = [
   },
   {
     id: "deadlift_unsupervised",
-    category: "absolute",
+    category: "relative",
     title: "Deadlifts (without physio sign-off)",
     reason_user_facing:
-      "Deadlifts under load amplify rotational forces on a curve. They're not auto-prescribed — only do them if your physio has specifically cleared form and load.",
+      "Loaded deadlifts aren't off-limits with scoliosis, but form and load matter more for an asymmetric spine. Not auto-prescribed — worth having your physio watch a set before you load up.",
     matches: {
       namePatterns: [/\bdead\s*lift/i, /\brdl\b/i, /\bromanian\s*deadlift/i],
     },
@@ -66,10 +80,10 @@ export const CONTRAINDICATION_RULES: ContraindicationRule[] = [
   },
   {
     id: "loaded_forward_flexion",
-    category: "absolute",
+    category: "relative",
     title: "Loaded forward flexion",
     reason_user_facing:
-      "Loaded toe-touches, weighted forward folds, and Pilates roll-ups compress the spine in flexion — bad news for asymmetric loading. We have safer options for the same goal.",
+      "Weighted forward folds and loaded roll-ups aren't shown to worsen an idiopathic curve. They do matter if you have osteoporosis or a spinal fusion, which is why they're flagged rather than added automatically — check with your physio.",
     matches: {
       namePatterns: [
         /loaded.*toe.*touch/i,
@@ -83,10 +97,10 @@ export const CONTRAINDICATION_RULES: ContraindicationRule[] = [
   },
   {
     id: "long_static_twists",
-    category: "absolute",
+    category: "relative",
     title: "End-range static twists held long",
     reason_user_facing:
-      "Long held end-range twists pull the spine into the existing rotation. Active de-rotation work is what you want.",
+      "Long-held end-range twists toward your curve's rotation aren't something this app adds on its own. Your physio can tell you which direction is useful for your pattern.",
     matches: {
       namePatterns: [
         /end[\s-]?range.*twist/i,
@@ -96,14 +110,14 @@ export const CONTRAINDICATION_RULES: ContraindicationRule[] = [
         /bharadvaj/i,
       ],
     },
-    safe_alternatives: ["frog_in_the_pond", "sitting_waist_fold"],
+    safe_alternatives: ["sitting_waist_fold", "schroth_rotational_breathing"],
   },
   {
     id: "long_inversions",
-    category: "absolute",
+    category: "relative",
     title: "Inversions",
     reason_user_facing:
-      "Headstand, shoulder stand, and other long inversions stack asymmetric loads through your spine in unpredictable ways. Skip them.",
+      "Headstands and shoulder stands aren't shown to harm an idiopathic curve, but they load the neck and spine at end range. Not auto-prescribed — fine if your physio is happy with them.",
     matches: {
       namePatterns: [
         /\bhead\s*stand\b/i,
@@ -204,20 +218,27 @@ export function findContraindications(input: {
   return hits;
 }
 
-// Side-plank-on-the-wrong-side is a contextual contraindication. Returns a
-// hit when the user's selected side opposes the convex thoracic side.
+// Side plank on the side opposite the thoracic convexity is a RELATIVE caution
+// for prolonged daily training holds — not an absolute contraindication.
+//
+// The convex-side-down rule traces to a single uncontrolled case series
+// (Fishman 2014, n=25) whose controlled replication (Sarkisova 2019) found no
+// Cobb effect. There is no evidence at all that holding the other side
+// "reinforces the curve"; that phrase was removed. The caution is kept as a
+// relative flag so a physio-prescribed opposite-side plank is surfaced, not
+// blocked, and a capped bilateral endurance test (lib/outcomes) is unaffected.
 export function checkSidePlankSide(
   selectedSide: Side | null,
   thoracicConvex: Side | null,
 ): RuleHit | null {
   if (!selectedSide || !thoracicConvex) return null;
-  if (selectedSide === thoracicConvex) return null; // correct: convex side down
+  if (selectedSide === thoracicConvex) return null; // convex side down: as prescribed
   return {
     rule: {
-      id: "side_plank_wrong_side",
-      category: "absolute",
-      title: "Side plank, wrong side down",
-      reason_user_facing: `Side plank should be done with your ${thoracicConvex} side down — that's the side your back bulges toward at the thoracic level. Holding the other side reinforces the curve.`,
+      id: "side_plank_opposite_side",
+      category: "relative",
+      title: "Side plank on the side opposite your curve",
+      reason_user_facing: `Long daily side-plank holds are usually prescribed with the ${thoracicConvex} side down for your curve. Holding the other side isn't dangerous, but as a repeated training dose it's worth confirming with your physio. A short timed hold on both sides for the endurance check is fine.`,
       matches: { libraryIds: ["side_plank_convex_thoracic_side_down"] },
       safe_alternatives: ["side_plank_convex_thoracic_side_down"],
     },

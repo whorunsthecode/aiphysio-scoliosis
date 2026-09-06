@@ -204,11 +204,29 @@ Telegram linkage and cron jobs that iterate profiles.
 This is a **movement coach that works alongside a physio**, not a medical
 device. Specifically:
 
+- **Exercise is not the whole of scoliosis care.** Per the SOSORT guideline:
+  under 25° Cobb, exercise-based care and monitoring are the usual first
+  step; 25–40° in a skeletally immature patient is a bracing indication,
+  with exercise alongside; over 40° needs a specialist's plan and exercise
+  alone is not a treatment for the curve. The app states this at the point
+  where severity is entered and never implies that its programme replaces
+  bracing or surgical review.
+- Self-guided asymmetric exercise is withheld for post-fusion, in-brace,
+  pregnant, osteoporotic and connective-tissue-disorder users; they get
+  gentle symmetric work until a clinician's prescription is entered.
 - Posture measurements are estimated from webcam pose landmarks, normalized
   to an assumed 500 mm torso. They're useful for spotting trends but
   aren't a replacement for a physio's Cobb angle measurements.
-- The X-ray reader is a starting point — every parsed field is editable and
-  must be confirmed against the user's physio's notes before saving.
+- The X-ray reader reads curve type, apex and — only when a laterality
+  marker is visible in the frame — convex side. It does not estimate Cobb
+  angles, rotation or segmental shift from a photo. Every field is labelled
+  unverified and must be confirmed against the clinician's report.
+- Which side the curve bulges toward is cross-checked across self-report,
+  X-ray and the forward-bend measurement; when sources disagree, the
+  programme runs side-neutral until a clinician settles it.
+- A short red-flag screen runs at the start of every session, and a
+  deterministic keyword pre-filter stops the chat model from suggesting
+  exercise when a message describes a red-flag symptom.
 - Form-check fires on compensations that hold for ≥2 s, with one cue per 5 s,
   and only on what webcam pose detection can reliably see (subtle pelvic tilt,
   for example, is out of scope for v1).

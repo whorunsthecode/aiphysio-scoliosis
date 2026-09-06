@@ -1,11 +1,12 @@
-// Tier 1: cascade-stage activation.
+// Tier 1: watch-list activation.
 //
-// For the user's curve pattern, walk through the model's stages and mark
-// each as "active" if its signal in recent sessions exceeds the threshold
+// For the user's curve pattern, walk through the watch-list and mark each
+// item "active" if its signal in recent sessions exceeds the threshold
 // (personal baseline + 2σ where available, else absolute fallback).
 //
-// Output: a row in cascade_predictions with active stages + the next stage
-// to watch.
+// Output: a row in cascade_predictions (name kept for schema stability)
+// with the items above baseline this week + the next item worth watching.
+// Nothing here predicts progression — see lib/agents/cascade.ts.
 
 import { NextResponse } from "next/server";
 import {
@@ -81,7 +82,7 @@ export async function GET(req: Request) {
       curve_pattern: pattern,
       active_stages: [],
       predicted_next: [],
-      reasoning: "No cascade model registered for this pattern yet.",
+      reasoning: "No watch-list registered for this pattern yet.",
       computed_at: new Date().toISOString(),
     });
     return NextResponse.json({ ok: true, reason: "no_model_for_pattern", pattern });
@@ -196,8 +197,8 @@ export async function GET(req: Request) {
       : [];
 
   const reasoning = activated.length === 0
-    ? `No cascade stages currently activated for ${pattern}. ${snaps.length} recent sessions all within personal range.`
-    : `${activated.length} stage${activated.length === 1 ? "" : "s"} activated in the past ${RECENT_DAYS} days: ${activated.map((s) => s.stage).join(", ")}.`;
+    ? `Nothing on the ${pattern} watch-list is above personal range. ${snaps.length} recent sessions all within baseline.`
+    : `${activated.length} watch-list item${activated.length === 1 ? "" : "s"} above personal range in the past ${RECENT_DAYS} days: ${activated.map((s) => s.stage).join(", ")}. Observed from webcam scans; not a prediction of progression.`;
 
   await supabase.from("cascade_predictions").insert({
     profile_id: profileId,

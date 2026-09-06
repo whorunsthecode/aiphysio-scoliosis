@@ -16,8 +16,10 @@
 // Orientation convention: the phone lies flat across the back, portrait, long
 // axis perpendicular to the spine. Raising one end of that long axis rotates
 // the device about its x-axis, which DeviceOrientationEvent reports as beta.
-// Rolling the phone about its long axis shows up as gamma, and means it is
-// not sitting flat — that reading is rejected rather than corrected.
+// Gamma is the fore–aft slope of the back at that level — how far the person
+// has bent — and is used to guide the bend, not treated as roll (see below).
+// Beta is in the device frame, so the patient-side sign depends on which way
+// the phone was laid; that is recorded per reading rather than assumed.
 
 export type TrunkLevel = "upper_thoracic" | "main_thoracic" | "thoracolumbar" | "lumbar";
 
@@ -44,13 +46,23 @@ export const TRUNK_LEVELS: { id: TrunkLevel; label: string; hint: string }[] = [
   },
 ];
 
-// Degrees of roll tolerated before a reading is rejected. The phone must be
-// flat on the back; a rolled phone reads a component of its own tilt as trunk
-// rotation.
-export const MAX_ROLL_DEG = 8;
+// Gamma, with the phone lying across the back in portrait, is NOT roll
+// cross-talk into the ATR reading. Under the W3C Z-X'-Y'' convention the
+// long axis's elevation is sin(beta) regardless of gamma. Gamma is the
+// fore–aft slope of the back surface at that level — i.e. how far the patient
+// has bent, which is legitimately non-zero and level-dependent. It is used as
+// Bunnell intended: guide the patient to bend until the level reads level.
+// Readings outside this band are rejected with "adjust_bend", never "not flat".
+export const MAX_BEND_DEPTH_DEG = 10;
 
-// Movement tolerated across the sampling window.
-export const MAX_DRIFT_DEG = 1.5;
+// Movement tolerated across the sampling window, as a standard deviation
+// (range is spike-sensitive; the tap that starts a reading is itself a spike).
+export const MAX_SD_DEG = 0.7;
+
+// The window must span at least one breath cycle (~4 s), and sampling should
+// not start until ~1.5 s after the helper taps, because the tap tilts the phone.
+export const SAMPLE_WINDOW_MS = 4000;
+export const SAMPLE_DELAY_MS = 1500;
 
 export type OrientationSample = {
   // DeviceOrientationEvent.beta — rotation about the device x-axis.
@@ -59,18 +71,25 @@ export type OrientationSample = {
   gamma: number | null;
 };
 
+// Which of the PATIENT's sides the phone's top (camera) end pointed toward.
+// Beta is defined in the device frame — positive lifts the top edge — so the
+// patient-side sign of a reading is a placement fact the sensor cannot know.
+// Without this the "right up / left up" label is a coin flip between helpers.
+export type TopPointedTo = "left" | "right";
+
 export type AtrReading = {
   level: TrunkLevel;
-  // Signed degrees. Positive = the user's right side is raised, which is the
-  // convention a right-convex thoracic curve produces.
+  // Signed degrees in the PATIENT frame. Positive = the user's right side is
+  // raised, which is the convention a right-convex thoracic curve produces.
   deg: number;
-  // Spread across the sampling window, as a stability signal.
+  // Stability across the sampling window (standard deviation).
   driftDeg: number;
   samples: number;
+  topPointedTo: TopPointedTo;
 };
 
 export type AtrRejection =
-  | "phone_not_flat"
+  | "adjust_bend"
   | "moved_during_reading"
   | "too_few_samples"
   | "no_sensor";
@@ -81,10 +100,31 @@ export type AtrCapture =
 
 export const MIN_SAMPLES = 10;
 
+export type CaptureOptions = {
+  // Where the phone's camera end pointed. Required — see TopPointedTo.
+  topPointedTo: TopPointedTo;
+  // Beta read with the phone flat on a level surface, subtracted from every
+  // reading. Consumer accelerometers carry 0.5–2° of zero offset; the Bunnell
+  // protocol zero-checks the scoliometer before use for the same reason.
+  zeroOffsetDeg?: number;
+};
+
+function median(xs: number[]): number {
+  const a = [...xs].sort((p, q) => p - q);
+  const m = Math.floor(a.length / 2);
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+}
+
+function sd(xs: number[]): number {
+  const mean = xs.reduce((p, q) => p + q, 0) / xs.length;
+  return Math.sqrt(xs.reduce((acc, x) => acc + (x - mean) ** 2, 0) / (xs.length - 1));
+}
+
 // Reduce a window of orientation samples to one reading.
 export function captureAtr(
   level: TrunkLevel,
   samples: OrientationSample[],
+  opts: CaptureOptions,
 ): AtrCapture {
   const usable = samples.filter(
     (s): s is { beta: number; gamma: number } =>
@@ -96,35 +136,43 @@ export function captureAtr(
   if (usable.length === 0) return { ok: false, reason: "no_sensor" };
   if (usable.length < MIN_SAMPLES) return { ok: false, reason: "too_few_samples" };
 
-  // Reject a rolled phone rather than trying to correct it: the correction
-  // depends on how the phone is rolled relative to the back's surface, which
-  // is not observable from the sensor alone.
-  const maxRoll = usable.reduce((m, s) => Math.max(m, Math.abs(s.gamma)), 0);
-  if (maxRoll > MAX_ROLL_DEG) return { ok: false, reason: "phone_not_flat" };
+  // Bend depth: the measured level must be roughly horizontal, as in the
+  // Bunnell protocol. Out of band means "bend a little more / less", not
+  // "the phone isn't flat".
+  const bendDepth = median(usable.map((s) => Math.abs(s.gamma)));
+  if (bendDepth > MAX_BEND_DEPTH_DEG) return { ok: false, reason: "adjust_bend" };
 
   const betas = usable.map((s) => s.beta);
-  const drift = Math.max(...betas) - Math.min(...betas);
-  if (drift > MAX_DRIFT_DEG) return { ok: false, reason: "moved_during_reading" };
+  const spread = sd(betas);
+  if (spread > MAX_SD_DEG) return { ok: false, reason: "moved_during_reading" };
 
-  const deg = betas.reduce((a, b) => a + b, 0) / betas.length;
+  // Median, zero-corrected, then mapped into the patient frame. Positive beta
+  // lifts the device's top edge; if that edge pointed to the patient's LEFT, a
+  // positive beta means the left side is up — so invert.
+  const deviceDeg = median(betas) - (opts.zeroOffsetDeg ?? 0);
+  const deg = opts.topPointedTo === "right" ? deviceDeg : -deviceDeg;
 
   return {
     ok: true,
-    reading: { level, deg, driftDeg: drift, samples: usable.length },
+    reading: {
+      level,
+      deg,
+      driftDeg: spread,
+      samples: usable.length,
+      topPointedTo: opts.topPointedTo,
+    },
   };
 }
 
 // ─────────────────────────── Interpretation ───────────────────────────
 //
-// Thresholds are the ones in clinical use, not invented here.
-//
-//   >= 5°  the level Hong Kong's school screening programme carries forward
-//          to further assessment
-//   >= 7°  the conventional Bunnell referral threshold for radiographic
-//          referral
-//
-// The app reports the number and what the threshold is. It does not decide
-// whether someone has scoliosis.
+// The 5° / 7° figures are SCREENING thresholds for undiagnosed adolescents
+// (HK Student Health Service carry-forward; Bunnell referral). This product's
+// users already have a diagnosis, and nearly all of them will read above 7°.
+// Telling a diagnosed patient "clinicians look further at 7°" is noise at
+// best and alarm at worst. So the bands are kept for context only, and the
+// message a user actually sees is about CHANGE against their own baseline,
+// gated on a measured MDC — the only honest use of a home ATR series.
 
 export const ATR_MONITOR_DEG = 5;
 export const ATR_REFERRAL_DEG = 7;
@@ -172,12 +220,7 @@ export function summarise(readings: AtrReading[]): AtrSummary {
   const side = rotationSide(peak.deg);
   const mag = Math.abs(peak.deg).toFixed(1);
 
-  const message =
-    band === "refer"
-      ? `Your highest reading is ${mag}°. Clinicians usually look further at anything from ${ATR_REFERRAL_DEG}° upward, so this is worth showing to yours.`
-      : band === "monitor"
-        ? `Your highest reading is ${mag}°. That's in the range worth keeping an eye on — track it and mention it at your next appointment.`
-        : `Your highest reading is ${mag}°, below the ${ATR_MONITOR_DEG}° mark clinicians typically follow up on.`;
+  const message = `Your highest reading is ${mag}° at the ${peak.level.replace("_", " ")} level. On its own that number doesn't tell you much — you already know you have a curve. What matters is whether it changes against your own readings over time, and I'll only call a change once I've measured how repeatable your setup is.`;
 
   return { readings, peak, band, side, message };
 }

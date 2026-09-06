@@ -7,6 +7,7 @@
 
 import type {
   FlagHit,
+  FlagSeverity,
   RedFlagRule,
   ScreeningAnswers,
   ScreeningQuestion,
@@ -94,6 +95,86 @@ export const RED_FLAG_RULES: RedFlagRule[] = [
       "Post-traumatic onset warrants imaging consideration before loaded exercise.",
   },
 
+  {
+    id: "neuro_axis_soft_signs",
+    severity: "urgent",
+    title: "Soft signs of a neural-axis anomaly",
+    observation:
+      "You've mentioned headaches that get worse when you cough or strain, or hands that have become clumsy, weak or numb.",
+    why:
+      "In someone with a curved spine those particular symptoms are worth a specialist looking at properly, sometimes with a scan, before exercising hard.",
+    action: "Book a doctor's appointment in the next few days and mention your scoliosis.",
+    provenance:
+      "Valsalva-worsened headache and upper-limb sensorimotor change are soft signs of Chiari malformation / syringomyelia, which carry a raised association with scoliosis — particularly left thoracic and atypical curves — and conventionally prompt MRI consideration.",
+  },
+
+  // ─────────────────────────── SUPERVISED ───────────────────────────
+  // Populations, not danger signs. Self-guided asymmetric exercise is withheld
+  // and a clinician's prescription requested; gentle symmetric work still runs.
+  {
+    id: "post_fusion",
+    severity: "supervised",
+    title: "Previous spinal fusion surgery",
+    observation: "You've mentioned having had spinal fusion surgery.",
+    why:
+      "After a fusion the fused segments don't move, so the levels above and below do more work — which exercises help and which to avoid is specific to your surgery.",
+    action:
+      "I'll keep to gentle, symmetric movement until you or your physio enter the programme your surgical team recommends.",
+    provenance:
+      "Post-fusion exercise selection depends on fusion levels, time since surgery and surgeon guidance; adjacent-segment loading is the standard concern. No generic programme is appropriate.",
+  },
+  {
+    id: "in_brace",
+    severity: "supervised",
+    title: "Currently wearing a brace",
+    observation: "You've mentioned wearing a scoliosis brace.",
+    why:
+      "Exercise around bracing works best when it's coordinated with the brace schedule and the team managing it.",
+    action:
+      "I'll keep to gentle movement until your physio's programme is entered — they'll know what to do in and out of the brace.",
+    provenance:
+      "SOSORT recommends PSSE alongside bracing but prescribed and supervised by the treating team; brace-wear timing and in-brace vs out-of-brace exercise are clinician decisions.",
+  },
+  {
+    id: "pregnancy",
+    severity: "supervised",
+    title: "Pregnancy",
+    observation: "You've mentioned being pregnant.",
+    why:
+      "Ligaments loosen and loading changes through pregnancy, so a programme written for you before isn't automatically right now.",
+    action: "Please get your exercise plan from your midwife, obstetrician or physio; I'll keep to gentle movement.",
+    provenance:
+      "Pregnancy-related ligamentous laxity and changing load; exercise guidance should come from the antenatal team.",
+  },
+  {
+    id: "bone_fragility",
+    severity: "supervised",
+    title: "Osteoporosis, or aged over 60 with new back pain",
+    observation:
+      "You've mentioned osteoporosis or low bone density, or you're over 60 with back pain that's new.",
+    why:
+      "With fragile bone, loaded bending and twisting genuinely do matter — the usual scoliosis exercises need adjusting.",
+    action:
+      "Worth a clinician setting your programme; I'll keep to gentle, upright movement in the meantime.",
+    provenance:
+      "Loaded spinal flexion and end-range rotation are recognised vertebral-fracture risks in osteoporosis; new back pain in an older adult warrants assessment before exercise.",
+  },
+  {
+    id: "connective_tissue",
+    severity: "supervised",
+    title: "Marfan, Ehlers-Danlos or diagnosed hypermobility",
+    // Quotes the user's own diagnosis back to them; it is not the app naming
+    // a condition. Worded to avoid "syndrome" so the no-conditions check
+    // stays a clean signal for genuine leaks.
+    observation:
+      "You've mentioned Marfan, Ehlers-Danlos, or a diagnosed hypermobility condition.",
+    why:
+      "Long breath-held holds and heavy effort can matter for the heart and vessels in Marfan, and joint loading needs care with hypermobility.",
+    action: "Please have your specialist or physio set your programme; I'll keep to gentle movement.",
+    provenance:
+      "Marfan syndrome carries aortic risk with Valsalva and isometric straining; hypermobility disorders alter safe end-range loading. Scoliosis is common in both.",
+  },
+
   // ────────────────────────────── REVIEW ───────────────────────────────
   {
     id: "rapid_progression",
@@ -151,7 +232,7 @@ export const SCREENING_QUESTIONS: ScreeningQuestion[] = [
   {
     id: "bladder_bowel_change",
     prompt: "Have you noticed any change in bladder or bowel control?",
-    help: "Including needing to go far more urgently, or not being able to tell when you need to.",
+    help: "Including needing to go far more urgently, not being able to go or fully empty, leaking, or not being able to tell when you need to.",
     flagIds: ["cauda_equina"],
     askAt: ["onboarding", "ongoing"],
   },
@@ -193,6 +274,42 @@ export const SCREENING_QUESTIONS: ScreeningQuestion[] = [
     askAt: ["onboarding", "ongoing"],
   },
   {
+    id: "strain_headache_or_hand_change",
+    prompt: "Headaches that get worse when you cough or strain, or hands that have become clumsy, weak or numb?",
+    flagIds: ["neuro_axis_soft_signs"],
+    askAt: ["onboarding", "ongoing"],
+  },
+  {
+    id: "had_fusion",
+    prompt: "Have you had spinal fusion surgery?",
+    flagIds: ["post_fusion"],
+    askAt: ["onboarding"],
+  },
+  {
+    id: "wears_brace",
+    prompt: "Do you currently wear a scoliosis brace?",
+    flagIds: ["in_brace"],
+    askAt: ["onboarding"],
+  },
+  {
+    id: "is_pregnant",
+    prompt: "Are you pregnant?",
+    flagIds: ["pregnancy"],
+    askAt: ["onboarding", "ongoing"],
+  },
+  {
+    id: "osteoporosis_or_older_new_pain",
+    prompt: "Do you have osteoporosis or low bone density, or are you over 60 with back pain that's new?",
+    flagIds: ["bone_fragility"],
+    askAt: ["onboarding"],
+  },
+  {
+    id: "connective_tissue_dx",
+    prompt: "Do you have Marfan syndrome, Ehlers-Danlos, or a diagnosed hypermobility condition?",
+    flagIds: ["connective_tissue"],
+    askAt: ["onboarding"],
+  },
+  {
     id: "rapid_change",
     prompt: "Has your curve changed noticeably in the last few months?",
     flagIds: ["rapid_progression"],
@@ -224,7 +341,7 @@ export type TriageInput = {
   } | null;
 };
 
-const SEVERITY_ORDER = { emergency: 3, urgent: 2, review: 1 } as const;
+const SEVERITY_ORDER = { emergency: 4, urgent: 3, supervised: 2, review: 1 } as const;
 
 export function triage(input: TriageInput): TriageResult {
   const hits: FlagHit[] = [];
@@ -270,11 +387,14 @@ export function triage(input: TriageInput): TriageResult {
   );
 
   const severity = hits.length ? hits[0].rule.severity : null;
+  const has = (s: FlagSeverity) => hits.some((h) => h.rule.severity === s);
   return {
     hits,
     severity,
     blocksSession: severity === "emergency",
-    reducesSession: severity === "urgent",
+    // Any urgent flag reduces, even when a supervised flag also fires.
+    reducesSession: has("urgent"),
+    requiresClinicianPrescription: has("supervised"),
   };
 }
 

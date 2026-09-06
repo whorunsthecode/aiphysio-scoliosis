@@ -35,6 +35,10 @@ const SEVERITY_OPTIONS: { id: Severity; label: string; hint: string }[] = [
   { id: "unknown", label: "I don’t know", hint: "We’ll proceed gently" },
 ];
 
+// Skeletal maturity is what actually gates bracing; age is the proxy this
+// app has. Eighteen is conservative for girls and about right for boys.
+const LIKELY_STILL_GROWING_UNDER = 18;
+
 interface CurveStepProps {
   state: OnboardingState;
   update: (patch: Partial<OnboardingState>) => void;
@@ -104,22 +108,51 @@ export function CurveStep({ state, update, onBack, onNext, onSkip }: CurveStepPr
 
       {showLean ? (
         <section className="space-y-3">
-          <SectionLabel>Which one looks like yours?</SectionLabel>
+          <SectionLabel>Which side is higher when you bend forward?</SectionLabel>
+          {/* The Adams forward-bend test is the one observation a person can
+              make about themselves that reliably gives the convex side. Asking
+              which way the back "bulges" standing up gets confused with the
+              hip that sticks out, the shoulder that sits low, or a mirror
+              image — and a wrong answer here trains the curve deeper. */}
           <p className="text-[14px] text-ink-secondary max-w-xl">
-            Tap the picture where the back bulges toward your side.
+            Bend forward from the hips, arms hanging, and have someone look
+            along your back from behind (or use a mirror). One side of your
+            back will sit higher than the other — a hump, usually over the ribs.
+            That side is what I need. It is <em>not</em> the hip that sticks
+            out, or the shoulder that sits lower.
           </p>
+          {state.sideConflict ? (
+            <Card tone="terracotta" className="space-y-1">
+              <p className="text-[14px] font-medium text-ink-primary">
+                Two sources disagreed about this.
+              </p>
+              <p className="text-[13.5px] text-ink-secondary">
+                You said {state.sideConflict.selfReport}; the X-ray read said{" "}
+                {state.sideConflict.xray}. Confirm with your physio and set it
+                here — until then your programme stays side-neutral.
+              </p>
+            </Card>
+          ) : null}
           <div className="grid gap-4 sm:grid-cols-2">
             <LeanCard
               side="left"
               selected={state.primaryLeanSide === "left"}
-              onClick={() => update({ primaryLeanSide: "left" })}
+              onClick={() => update({ primaryLeanSide: "left", sideConflict: null })}
             />
             <LeanCard
               side="right"
               selected={state.primaryLeanSide === "right"}
-              onClick={() => update({ primaryLeanSide: "right" })}
+              onClick={() => update({ primaryLeanSide: "right", sideConflict: null })}
             />
           </div>
+          {/* "Not sure" is a real answer, and the safe one: selectProgram
+              withholds every side-dependent exercise until the side is known. */}
+          <Chip
+            selected={state.primaryLeanSide === null && !!state.curveType}
+            onClick={() => update({ primaryLeanSide: null })}
+          >
+            Not sure — keep my exercises side-neutral for now
+          </Chip>
         </section>
       ) : null}
 
@@ -144,9 +177,15 @@ export function CurveStep({ state, update, onBack, onNext, onSkip }: CurveStepPr
                 selected={state.secondaryLeanSide === side}
                 onClick={() => update({ secondaryLeanSide: side })}
               >
-                Bulges to the {side}
+                Higher on the {side} when bent forward
               </Chip>
             ))}
+            <Chip
+              selected={state.secondaryLeanSide === null}
+              onClick={() => update({ secondaryLeanSide: null })}
+            >
+              Not sure
+            </Chip>
           </div>
         </Card>
       ) : null}
@@ -170,6 +209,7 @@ export function CurveStep({ state, update, onBack, onNext, onSkip }: CurveStepPr
             </Chip>
           ))}
         </div>
+        <BracingNote severity={state.severity} ageYears={state.ageYears ?? null} />
       </section>
 
       {/* Most people arriving know only that someone told them they have
@@ -189,6 +229,49 @@ export function CurveStep({ state, update, onBack, onNext, onSkip }: CurveStepPr
 
       <StepNav onBack={onBack} onNext={onNext} nextDisabled={!canContinue} />
     </div>
+  );
+}
+
+// Exercise is not the whole of scoliosis care, and an app that only ever
+// talks about exercise can quietly imply that it is. The SOSORT guideline
+// position, stated once, plainly, where the severity is entered:
+//   under 25°           exercise-based care is the usual first step
+//   25–40°, growing     bracing plus exercise is the usual recommendation
+//   over 40°            a specialist's plan; exercise alone is not treatment
+function BracingNote({
+  severity,
+  ageYears,
+}: {
+  severity: Severity | null;
+  ageYears: number | null;
+}) {
+  if (!severity) return null;
+  const growing = typeof ageYears === "number" && ageYears < LIKELY_STILL_GROWING_UNDER;
+
+  let text: string;
+  if (severity === "mild") {
+    text =
+      "Under 25°, exercise-based care and regular check-ups are the usual first step. That's what this app supports.";
+  } else if (severity === "moderate") {
+    text = growing
+      ? "At 25–40° while you're still growing, the usual recommendation is a brace worn alongside exercise — exercise on its own isn't the standard of care at this stage. If no one has discussed bracing with you, that's worth asking about."
+      : "At 25–40° in an adult, exercise and monitoring are usual; bracing is mainly for curves that are still growing. Your specialist decides what applies to you.";
+  } else if (severity === "severe") {
+    text =
+      "Over 40° needs a specialist's plan. Exercise can still help how you feel and function, but it isn't a treatment for the curve itself at this size, and this app won't pretend otherwise.";
+  } else {
+    text =
+      "If you don't know your Cobb angle, it's worth finding out — it decides whether exercise alone is the right plan, or whether bracing or a specialist should be involved.";
+  }
+
+  return (
+    <Card tone="muted" className="space-y-1">
+      <p className="text-[13.5px] leading-relaxed text-ink-secondary">{text}</p>
+      <p className="text-[12px] text-ink-tertiary">
+        Based on the SOSORT international guideline. Your own team&rsquo;s advice
+        always comes first.
+      </p>
+    </Card>
   );
 }
 
@@ -217,10 +300,10 @@ function LeanCard({
         <SpineSilhouette lean={side} />
         <div>
           <p className="font-display text-[18px] text-ink-primary">
-            Bulges to the {side}
+            Higher on the {side}
           </p>
           <p className="text-[13px] text-ink-tertiary">
-            Curve apex pushes outward on the {side} side
+            The hump is on my {side} when I bend forward
           </p>
         </div>
       </div>

@@ -44,7 +44,11 @@ export type Repeatability = {
   loaUpper: number;
 };
 
-export const MIN_PAIRS_FOR_MDC = 5;
+// Ten pairs, not five. With five pairs (4 df) the 95% CI on the SD spans roughly
+// 0.6x to 2.9x the point estimate — an MDC from that is a guess with a decimal
+// point. Ten (9 df) narrows it to about 0.7x–1.8x, which is the least a
+// reviewer will accept alongside an ICC and a Bland–Altman plot.
+export const MIN_PAIRS_FOR_MDC = 10;
 
 export function computeRepeatability(pairs: ScanPair[]): Repeatability | null {
   const diffs = pairs

@@ -80,9 +80,15 @@ export type OnboardingState = {
 
   pain: PainPoint[];
 
-  // Age in years. Only consumer today is the red-flag screen, which treats a
-  // left-convex thoracic curve differently before skeletal maturity.
+  // Age in years. Feeds the red-flag screen (a left-convex thoracic curve is
+  // treated differently before skeletal maturity) and the bracing-indication
+  // note shown against the severity bands.
   ageYears?: number | null;
+
+  // Set when two sources disagree about which side the primary curve bulges
+  // toward (see lib/exercises/convexity.ts). While present, primaryLeanSide
+  // is null and the programme stays side-neutral.
+  sideConflict?: { selfReport: Side; xray: Side } | null;
 
   // Answers to the red-flag screen, keyed by question id. Undefined means
   // unanswered, which is deliberately not the same as false — see

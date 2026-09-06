@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { analyzeImageJSON, GeminiError } from "@/lib/gemini";
-import { XRAY_SYSTEM_PROMPT, type XrayAnalysis } from "@/lib/prompts/xray";
+import {
+  XRAY_SYSTEM_PROMPT,
+  enforceLaterality,
+  type XrayAnalysis,
+} from "@/lib/prompts/xray";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -73,10 +77,17 @@ export async function POST(req: Request) {
   }
 
   try {
-    const analysis = await analyzeImageJSON<XrayAnalysis>({
+    const raw = await analyzeImageJSON<XrayAnalysis>({
       prompt: XRAY_SYSTEM_PROMPT,
       imageBase64,
       mimeType,
+    });
+    const analysis = enforceLaterality({
+      ...raw,
+      laterality_marker_visible: raw.laterality_marker_visible === true,
+      other_observations: Array.isArray(raw.other_observations)
+        ? raw.other_observations.filter((s) => typeof s === "string")
+        : [],
     });
     return NextResponse.json({ ok: true, analysis });
   } catch (e) {

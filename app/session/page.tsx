@@ -19,11 +19,14 @@ import { SectionLabel } from "@/components/ui/SectionLabel";
 import { TagPill } from "@/components/ui/TagPill";
 import { SessionShell } from "@/components/session/SessionShell";
 import { PainQuickCheck } from "@/components/session/PainQuickCheck";
+import { SessionSafetyCheck } from "@/components/session/SessionSafetyCheck";
 import { SessionComplete } from "@/components/session/SessionComplete";
 import { loadDraft } from "@/lib/onboarding/persist";
 import { initialOnboardingState } from "@/lib/onboarding/initialState";
 import { triage } from "@/lib/safety/redFlags";
-import type { TriageResult } from "@/lib/safety/types";
+import type { ScreeningAnswers, TriageResult } from "@/lib/safety/types";
+import { loadAtrPeak } from "@/lib/atr/storage";
+import { atrSideFrom, reconcileConvexity } from "@/lib/exercises/convexity";
 import { RedFlagNotice } from "@/components/safety/RedFlagNotice";
 import {
   deriveCurvePattern,
@@ -69,6 +72,11 @@ export default function SessionPage() {
   const [profile, setProfile] = useState<OnboardingState>(TEST_PROFILE);
   const [triageResult, setTriage] = useState<TriageResult | null>(null);
   const [usedDraft, setUsedDraft] = useState(false);
+  // Answers to this session's ongoing screen. Held in memory only — they
+  // are never written to storage (see lib/privacy/data.ts).
+  const [sessionScreen, setSessionScreen] = useState<ScreeningAnswers>({});
+  // Latest forward-bend peak side, if the user has done one.
+  const [atrSide, setAtrSide] = useState<Side | null>(null);
   const [session, setSession] = useState<SessionState>(() => ({
     id: typeof crypto !== "undefined" ? crypto.randomUUID() : `${Date.now()}`,
     startedAt: Date.now(),
@@ -90,41 +98,94 @@ export default function SessionPage() {
       setProfile(draft);
       setUsedDraft(true);
     }
+    setAtrSide(atrSideFrom(loadAtrPeak()?.peakDeg));
   }, []);
 
-  const sides = useMemo(() => deriveRegionalSides(profile), [profile]);
+  // Cross-check the convex side. If the forward-bend measurement disagrees
+  // with what the user told us, neither is trusted: the programme runs
+  // side-neutral and the user is told why. See lib/exercises/convexity.ts.
+  const convexity = useMemo(
+    () =>
+      reconcileConvexity([
+        { source: "self_report", side: profile.primaryLeanSide },
+        { source: "atr", side: atrSide },
+      ]),
+    [profile.primaryLeanSide, atrSide],
+  );
+  const effectiveProfile = useMemo<OnboardingState>(
+    () =>
+      convexity.status === "conflict"
+        ? { ...profile, primaryLeanSide: null }
+        : profile,
+    [profile, convexity.status],
+  );
+
+  const sides = useMemo(() => deriveRegionalSides(effectiveProfile), [effectiveProfile]);
+
+  const runTriage = useCallback(
+    (answers: ScreeningAnswers) =>
+      // The onboarding answers are not held in the browser, so the screen
+      // that counts is the one just taken. Derived rules still need the
+      // curve context.
+      triage({
+        answers,
+        profile: {
+          primaryCurveApex: profile.primaryCurveApex,
+          primaryConvexSide: profile.primaryLeanSide,
+          ageYears: profile.ageYears ?? null,
+        },
+      }),
+    [profile.primaryCurveApex, profile.primaryLeanSide, profile.ageYears],
+  );
 
   // Build the program from initial scan (and current pain check) once we
   // have an initial scan.
   useEffect(() => {
     if (session.phase !== "initial_scan") return;
     if (!session.initialScan) return;
-    // Re-run the stored screen every session rather than trusting the
-    // onboarding verdict indefinitely — the ruleset changes, and so do
-    // symptoms. An emergency flag returns an empty programme.
-    const triageResult = triage({
-      answers: profile.safetyScreen ?? {},
-      profile: {
-        primaryCurveApex: profile.primaryCurveApex,
-        primaryConvexSide: profile.primaryLeanSide,
-        ageYears: profile.ageYears ?? null,
-      },
-    });
+    const triageResult = runTriage(sessionScreen);
     const program = selectProgram({
-      profile,
+      profile: effectiveProfile,
       scan: session.initialScan.measurements,
       pain: session.pain,
       physioProgram: profile.physioProgram.parsed,
       physioClarifications: profile.physioProgram.clarifications,
       triage: triageResult,
     });
+    if (convexity.note) program.notes.unshift(convexity.note);
     setTriage(triageResult);
     setSession((s) => ({
       ...s,
       program,
       phase: "program_preview",
     }));
-  }, [session.phase, session.initialScan, session.pain, profile]);
+  }, [
+    session.phase,
+    session.initialScan,
+    session.pain,
+    profile,
+    effectiveProfile,
+    sessionScreen,
+    runTriage,
+    convexity.note,
+  ]);
+
+  // The ongoing screen comes first. An emergency answer ends the session
+  // here — no scan, no programme, just the notice and what to do.
+  const onSafetyContinue = (answers: ScreeningAnswers) => {
+    setSessionScreen(answers);
+    const result = runTriage(answers);
+    if (result.blocksSession) {
+      setTriage(result);
+      setSession((s) => ({
+        ...s,
+        program: selectProgram({ profile: effectiveProfile, triage: result }),
+        phase: "program_preview",
+      }));
+      return;
+    }
+    setSession((s) => ({ ...s, phase: "pain_check" }));
+  };
 
   const onPainContinue = (points: typeof session.pain) =>
     setSession((s) => ({ ...s, pain: points, phase: "initial_scan" }));
@@ -176,7 +237,7 @@ export default function SessionPage() {
   };
 
   const startSession = () =>
-    setSession((s) => ({ ...s, phase: "pain_check" }));
+    setSession((s) => ({ ...s, phase: "safety_check" }));
 
   const program = session.program;
   const currentExercise: Exercise | null = program
@@ -200,10 +261,15 @@ export default function SessionPage() {
     >
       {session.phase === "preparing" ? (
         <PreparingPhase
-          profile={profile}
+          profile={effectiveProfile}
           usedDraft={usedDraft}
+          convexityNote={convexity.note}
           onStart={startSession}
         />
+      ) : null}
+
+      {session.phase === "safety_check" ? (
+        <SessionSafetyCheck onContinue={onSafetyContinue} />
       ) : null}
 
       {session.phase === "pain_check" ? (
@@ -279,10 +345,12 @@ function sideForExercise(
 function PreparingPhase({
   profile,
   usedDraft,
+  convexityNote,
   onStart,
 }: {
   profile: OnboardingState;
   usedDraft: boolean;
+  convexityNote: string | null;
   onStart: () => void;
 }) {
   const pattern = deriveCurvePattern(profile);
@@ -301,8 +369,9 @@ function PreparingPhase({
           Hi {profile.name?.trim() || "there"} — let&rsquo;s get into it.
         </Heading>
         <p className="max-w-xl text-ink-secondary">
-          Five steps. Pain check-in, a 10-second posture scan, three to five
-          exercises, another scan, and we compare. About 12 minutes.
+          Six steps. A few safety questions, pain check-in, a 10-second posture
+          scan, three to five exercises, another scan, and we compare. About
+          12 minutes.
         </p>
       </div>
 
@@ -339,6 +408,24 @@ function PreparingPhase({
           </div>
         </Card>
       </div>
+
+      {convexityNote ? (
+        <Card tone="terracotta" className="space-y-2">
+          <div className="flex items-start gap-3">
+            <ShieldAlert
+              size={18}
+              strokeWidth={1.6}
+              className="mt-0.5 shrink-0 text-terracotta-dark"
+            />
+            <div>
+              <p className="font-medium text-ink-primary">
+                Side-neutral today.
+              </p>
+              <p className="text-[14px] text-ink-secondary">{convexityNote}</p>
+            </div>
+          </div>
+        </Card>
+      ) : null}
 
       {!usedDraft ? (
         <Card tone="terracotta" className="space-y-2">

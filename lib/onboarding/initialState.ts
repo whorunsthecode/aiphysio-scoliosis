@@ -39,6 +39,7 @@ export const initialOnboardingState: OnboardingState = {
   },
   pain: [],
   ageYears: null,
+  sideConflict: null,
   // Empty, not all-false — an unanswered screening question is not a "no".
   safetyScreen: {},
 };

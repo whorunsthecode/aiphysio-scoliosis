@@ -52,7 +52,12 @@ export default function OnboardingPage() {
     switch (currentStep) {
       case "welcome":
         return (
-          <WelcomeStep state={state} setName={setName} onNext={goNext} />
+          <WelcomeStep
+            state={state}
+            setName={setName}
+            update={update}
+            onNext={goNext}
+          />
         );
       case "curve":
         return (

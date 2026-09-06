@@ -12,6 +12,7 @@ import { chatWithTools, type GroqMessage } from "@/lib/groq";
 import { TOOL_DEFS, executeTool } from "@/lib/agents/tools";
 import { buildContext, serializeContext } from "@/lib/agents/context";
 import { EXERCISE_LIBRARY } from "@/lib/exercises/library";
+import { prefilterRedFlags, safetyReplyFor } from "@/lib/safety/prefilter";
 
 const CHAT_SYSTEM_PROMPT = `You are the chat-side voice of [User]'s scoliosis care team — a warm friend who happens to know how scoliosis bodies work and replies when she texts. You are not a clinician. You are not a chatbot. You are the human-feeling thread that connects her daily life to the work.
 
@@ -124,6 +125,24 @@ export async function handleConversation(
   profileId: string,
   userMessage: string,
 ): Promise<ConversationResult> {
+  // Deterministic safety floor. The prompt below asks the model to do this;
+  // the code here makes sure of it. On a hit the model never sees the
+  // message — a fixed reply goes back and the flag is logged through the
+  // same tool the model would have called.
+  const prefilter = prefilterRedFlags(userMessage);
+  if (prefilter.length > 0) {
+    const args = JSON.stringify({
+      user_words: userMessage,
+      symptom_category: `prefilter:${prefilter.map((h) => h.ruleId).join("+")}`,
+    });
+    const result = await executeTool(profileId, "flag_safety", args);
+    return {
+      ok: true,
+      reply: safetyReplyFor(prefilter),
+      toolsCalled: [{ name: "flag_safety", args, result }],
+    };
+  }
+
   const context = await buildContext(profileId, "companion");
 
   // Compact context for chat — everything the conversation handler actually

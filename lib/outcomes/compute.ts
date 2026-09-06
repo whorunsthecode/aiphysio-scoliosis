@@ -109,6 +109,13 @@ export function psfsChange(
 
 export const SIDE_BRIDGE_SYMMETRY_TOLERANCE = 0.05;
 
+// The endurance TEST is capped. A maximal-duration side plank on the side
+// opposite the curve is exactly the prolonged hold the contraindication engine
+// flags as a relative caution; a capped bilateral test is a measurement, not a
+// training dose, and the two must not be confused. Ninety seconds per side is
+// long enough to separate sides and short enough to stay a test.
+export const SIDE_BRIDGE_TEST_CAP_SECONDS = 90;
+
 export type EnduranceTest =
   | "side_bridge_left"
   | "side_bridge_right"

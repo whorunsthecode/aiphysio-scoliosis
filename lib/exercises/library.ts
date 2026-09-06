@@ -195,41 +195,45 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     voice_corrections: [],
   },
 
-  // Tier 3 — Schroth-adjacent corrective
-  {
-    id: "frog_in_the_pond",
-    name: "Frog in the pond",
-    tier: 3,
-    category: "derotation",
-    description:
-      "Lying down, knees bent left and parallel to mat line, left hand on neck, left scapula rotates back, right hand at 90°.",
-    setup_instructions:
-      "Lie on your back. Bend knees and drop them to the left, parallel to the mat line. Place left hand on neck. Right hand at 90° to the side.",
-    execution_cues: "Scapular position, knee alignment to mat line.",
-    applicable_patterns: ["right_thoracic", "double_right_thoracic_left_lumbar"],
-    asymmetric_cues: {},
-    form_check_targets: ["scapular_position"],
-    contraindicated_for: [],
-    loads_regions: ["mid_back", "left_shoulder"],
-    duration_seconds: 30,
-    sets: 3,
-    voice_corrections: [],
-  },
+  // Tier 3 — Asymmetric corrective work. Simplified from PSSE principles
+  // (open the concave side, breathe into it); NOT certified Schroth/SEAS
+  // content and not labelled as such to the user.
+  //
+  // "Frog in the pond" was removed here. The real Schroth "Frosch am Teich" is
+  // a seated position with legs folded back and heels beside the body, with
+  // pelvic positioning that varies by curve type. What this library described
+  // — supine, knees dropped left, left hand on neck — was a different, unsourced
+  // movement transcribed from one patient's programme, existed only for
+  // right-thoracic patterns with no mirror, and rotated pelvis and thorax the
+  // same way (a whole-body roll, not a derotation). Cut rather than rewritten:
+  // inventing a replacement would repeat the original mistake.
   {
     id: "sitting_waist_fold",
     name: "Sitting waist fold",
     tier: 3,
     category: "derotation",
+    // Side-bending compresses the side you bend TOWARD and opens the other.
+    // A right thoracic curve is convex right and concave (collapsed) LEFT, so
+    // the opening fold is to the RIGHT — toward the bulge. The previous cues
+    // had this backwards for both patterns and folded the patient INTO the
+    // concavity. Three independent clinical auditors caught it; see
+    // docs/clinical-audit.md `waist-fold-cued-into-curve`.
     description:
-      "Sit on chair, fold left waist (compresses left side, opens right).",
+      "Seated lateral fold toward the convex side, opening the collapsed concave side of the curve.",
     setup_instructions:
       "Sit upright on a firm chair, feet flat on the floor.",
     execution_cues:
-      "Actual lateral fold not forward fold, shoulder stays over hip.",
-    applicable_patterns: ["any"],
+      "Actual lateral fold not forward fold, shoulder stays over hip. Breathe into the side that is opening.",
+    applicable_patterns: ["right_thoracic", "left_thoracic", "double_right_thoracic_left_lumbar", "double_left_thoracic_right_lumbar"],
     asymmetric_cues: {
-      right_thoracic: "Fold to the left to open the right concave thoracic side.",
-      left_thoracic: "Fold to the right to open the left concave thoracic side.",
+      right_thoracic:
+        "Fold to the RIGHT — toward the side your back bulges — to open the left, collapsed side.",
+      left_thoracic:
+        "Fold to the LEFT — toward the side your back bulges — to open the right, collapsed side.",
+      double_right_thoracic_left_lumbar:
+        "Fold to the RIGHT for the thoracic curve, keeping the pelvis level.",
+      double_left_thoracic_right_lumbar:
+        "Fold to the LEFT for the thoracic curve, keeping the pelvis level.",
     },
     form_check_targets: ["lateral_fold_isolation"],
     contraindicated_for: [],
@@ -243,8 +247,18 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     name: "Side plank, convex-thoracic side down",
     tier: 3,
     category: "strength",
+    // Evidence note. The convex-side-down protocol comes from Fishman,
+    // Groessl & Sherman 2014 — an uncontrolled case series of 25 mixed
+    // idiopathic/degenerative patients. Sarkisova et al. 2019 (CHLA) repeated
+    // the protocol with a control arm in AIS and found no significant change in
+    // Cobb angle at six months. It is therefore offered as a plausible
+    // asymmetric strengthening choice a physio may prescribe, not as a
+    // curve-correcting treatment, and the OTHER side is a relative caution for
+    // prolonged daily holds — not an absolute contraindication. A short
+    // bilateral side-bridge endurance TEST (see lib/outcomes) is explicitly
+    // fine; it is capped at 90 s per side and is not a training dose.
     description:
-      "For right thoracic curves: right side down. For left thoracic: left side down. Wrong side held long is a contraindication.",
+      "For right thoracic curves: right side down. For left thoracic: left side down. Prolonged daily holds on the other side are a relative caution, not a ban; a short bilateral endurance test is fine.",
     setup_instructions:
       "Side-lying with elbow under shoulder. Stack feet. Lift hips into a straight line.",
     execution_cues:
@@ -328,15 +342,21 @@ export const EXERCISE_LIBRARY: Exercise[] = [
     name: "Child's pose with side reach",
     tier: 4,
     category: "flexibility",
+    // Walking both hands to one side bends the trunk that way and lengthens
+    // the OPPOSITE flank. Reaching toward the convex side therefore opens the
+    // concave side — the direction was right but the rationale said the
+    // opposite. Corrected rationale; direction unchanged.
     description:
-      "Reach toward convex thoracic side to lengthen it.",
+      "Reach toward the convex side of the curve, which lengthens and opens the collapsed concave side.",
     setup_instructions:
       "From hands and knees, sit hips back to heels and reach arms forward.",
-    execution_cues: "30 seconds each side, longer on convex side.",
+    execution_cues: "30 seconds each side, longer reaching toward the convex side.",
     applicable_patterns: ["any"],
     asymmetric_cues: {
-      right_thoracic: "Longer reach to the right (convex thoracic side).",
-      left_thoracic: "Longer reach to the left (convex thoracic side).",
+      right_thoracic:
+        "Longer reach to the right — toward the bulge — to open the left, collapsed side.",
+      left_thoracic:
+        "Longer reach to the left — toward the bulge — to open the right, collapsed side.",
     },
     form_check_targets: [],
     contraindicated_for: [],

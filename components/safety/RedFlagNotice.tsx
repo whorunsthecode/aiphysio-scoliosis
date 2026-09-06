@@ -26,6 +26,11 @@ const TIER = {
     frame: "border-border bg-surface",
     accent: "text-ink-primary",
   },
+  supervised: {
+    heading: "Your programme needs a clinician's sign-off",
+    frame: "border-sage bg-sage/10",
+    accent: "text-ink-primary",
+  },
 } as const;
 
 export function RedFlagNotice({
@@ -81,6 +86,17 @@ export function RedFlagNotice({
         <p className="mt-4 border-t border-border/60 pt-4 text-[14px] text-ink-secondary">
           Today&apos;s exercises are paused until you&apos;ve spoken to someone.
           That&apos;s deliberate — movement isn&apos;t the right next step here.
+        </p>
+      ) : result.requiresClinicianPrescription ? (
+        <p className="mt-4 border-t border-border/60 pt-4 text-[14px] text-ink-secondary">
+          I won&apos;t build a one-sided programme for you on my own. Until a
+          physio or doctor has prescribed one, you&apos;ll get gentle, symmetric
+          work only — breathing and mobility, nothing that loads one side.
+        </p>
+      ) : result.reducesSession ? (
+        <p className="mt-4 border-t border-border/60 pt-4 text-[14px] text-ink-secondary">
+          Today&apos;s programme is reduced to gentle breathing and mobility
+          until you&apos;ve had that looked at.
         </p>
       ) : null}
 

@@ -12,7 +12,6 @@ import {
 import { Heading } from "@/components/ui/Heading";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
 import { Chip } from "@/components/ui/Chip";
 import { SectionLabel } from "@/components/ui/SectionLabel";
 import { StepNav } from "@/components/onboarding/StepNav";
@@ -20,10 +19,10 @@ import type {
   ApexRegion,
   CurveType,
   OnboardingState,
-  SegmentShift,
   Side,
 } from "@/lib/onboarding/types";
 import type { XrayAnalysis } from "@/lib/prompts/xray";
+import { reconcileConvexity } from "@/lib/exercises/convexity";
 
 interface XrayStepProps {
   state: OnboardingState;
@@ -36,20 +35,18 @@ interface XrayStepProps {
 // Editable confirmation state — initialized from the model output, then any
 // override by the user wins. We never write `analysis` directly to the
 // profile; only this confirmed shape gets applied.
+//
+// What is NOT here, on purpose: a Cobb angle (a phone photo of a film cannot
+// be measured), segmental shift and rotation (not readable by a vision
+// model from a photo). Those come from the clinician's report, or the
+// segment step, or nowhere.
 type ConfirmFields = {
   curveType: CurveType;
   primaryApex: ApexRegion | null;
   primaryLean: Side | null;
-  cobbRange: string;
   hasSecondary: boolean;
   secondaryApex: ApexRegion | null;
   secondaryLean: Side | null;
-  segments: {
-    cervical: SegmentShift | null;
-    upperThoracic: SegmentShift | null;
-    lowerThoracic: SegmentShift | null;
-    lumbar: SegmentShift | null;
-  };
 };
 
 const APEX_OPTIONS: { id: ApexRegion; label: string }[] = [
@@ -58,12 +55,6 @@ const APEX_OPTIONS: { id: ApexRegion; label: string }[] = [
   { id: "lower_thoracic", label: "Lower thoracic" },
   { id: "thoracolumbar", label: "Thoracolumbar" },
   { id: "lumbar", label: "Lumbar" },
-];
-
-const SHIFT_OPTIONS: { id: SegmentShift; label: string }[] = [
-  { id: "left", label: "Left" },
-  { id: "right", label: "Right" },
-  { id: "centered", label: "Centered" },
 ];
 
 export function XrayStep({
@@ -158,18 +149,25 @@ export function XrayStep({
     });
 
   const applyConfirmed = (confirmed: ConfirmFields) => {
+    // Cross-check the X-ray side against what the user said on the curve
+    // step. Two sources disagreeing is exactly the case where guessing is
+    // dangerous, so the side goes to null and the conflict is recorded.
+    const verdict = reconcileConvexity([
+      { source: "self_report", side: state.primaryLeanSide },
+      { source: "xray", side: confirmed.primaryLean },
+    ]);
+    const conflict =
+      verdict.status === "conflict" && state.primaryLeanSide && confirmed.primaryLean
+        ? { selfReport: state.primaryLeanSide, xray: confirmed.primaryLean }
+        : null;
+
     update({
       curveType: confirmed.curveType,
       primaryCurveApex: confirmed.primaryApex,
-      primaryLeanSide: confirmed.primaryLean,
+      primaryLeanSide: verdict.side,
+      sideConflict: conflict,
       secondaryCurveApex: confirmed.hasSecondary ? confirmed.secondaryApex : null,
       secondaryLeanSide: confirmed.hasSecondary ? confirmed.secondaryLean : null,
-      segmentShifts: {
-        cervical: confirmed.segments.cervical,
-        upper_thoracic: confirmed.segments.upperThoracic,
-        lower_thoracic: confirmed.segments.lowerThoracic,
-        lumbar: confirmed.segments.lumbar,
-      },
       xray: { ...state.xray, applied: true },
     });
   };
@@ -180,8 +178,9 @@ export function XrayStep({
         <Heading level={1}>Got an X-ray?</Heading>
         <p className="text-ink-secondary max-w-xl">
           Optional. If you have one, drop it here and I&rsquo;ll read what I
-          can. You&rsquo;ll always confirm against your physio&rsquo;s notes
-          before anything is saved to your profile.
+          can — which is less than you might expect. Everything I read is
+          unverified until you&rsquo;ve checked it against your
+          clinician&rsquo;s report.
         </p>
       </div>
 
@@ -211,8 +210,8 @@ export function XrayStep({
             Drop your X-ray here
           </p>
           <p className="mt-1 text-[14px] text-ink-secondary">
-            JPG, PNG, or WEBP · stays on your device until you finish
-            onboarding
+            JPG, PNG, or WEBP · front-on view · stays on your device until you
+            finish onboarding
           </p>
           <div className="mt-6">
             <Button
@@ -298,6 +297,7 @@ export function XrayStep({
             <EditableXrayPanel
               key={state.xray.fileName ?? "xray"}
               analysis={state.xray.parsed}
+              selfReportedSide={state.primaryLeanSide}
               applied={state.xray.applied}
               onApply={applyConfirmed}
             />
@@ -352,10 +352,12 @@ function ParseStatusCard({
 
 function EditableXrayPanel({
   analysis,
+  selfReportedSide,
   applied,
   onApply,
 }: {
   analysis: XrayAnalysis;
+  selfReportedSide: Side | null;
   applied: boolean;
   onApply: (confirmed: ConfirmFields) => void;
 }) {
@@ -372,17 +374,14 @@ function EditableXrayPanel({
     const safeApex = (
       r: XrayAnalysis["curve_assessment"]["primary_curve"]["apex_region"],
     ): ApexRegion | null => (r === "unclear" ? null : (r as ApexRegion));
+    // Without a laterality marker the side is not evidence, whatever the
+    // model returned. The API enforces this too; this is the UI's copy.
     const safeSide = (s: "left" | "right" | "unclear"): Side | null =>
-      s === "unclear" ? null : s;
-    const segMap = (
-      v: "left" | "right" | "neutral" | "unclear",
-    ): SegmentShift | null =>
-      v === "neutral" ? "centered" : v === "unclear" ? null : v;
+      !analysis.laterality_marker_visible || s === "unclear" ? null : s;
     return {
       curveType: ct,
       primaryApex: safeApex(a.primary_curve.apex_region),
       primaryLean: safeSide(a.primary_curve.convex_side),
-      cobbRange: a.primary_curve.estimated_cobb_range || "",
       hasSecondary: !!a.secondary_curve,
       secondaryApex: a.secondary_curve
         ? safeApex(a.secondary_curve.apex_region)
@@ -390,16 +389,6 @@ function EditableXrayPanel({
       secondaryLean: a.secondary_curve
         ? safeSide(a.secondary_curve.convex_side)
         : null,
-      segments: {
-        cervical: segMap(a.segmental_shift_impression.segment_I_cervical),
-        upperThoracic: segMap(
-          a.segmental_shift_impression.segment_II_upper_thoracic,
-        ),
-        lowerThoracic: segMap(
-          a.segmental_shift_impression.segment_III_lower_thoracic,
-        ),
-        lumbar: segMap(a.segmental_shift_impression.segment_IV_lumbar),
-      },
     };
   }, [analysis]);
 
@@ -415,7 +404,7 @@ function EditableXrayPanel({
     return (
       <Card tone="terracotta" className="space-y-2">
         <p className="font-display text-[18px] text-ink-primary">
-          That doesn&rsquo;t look like a scoliosis X-ray.
+          That doesn&rsquo;t look like a spine X-ray.
         </p>
         <p className="text-[14px] text-ink-secondary">
           {analysis.validity_note ||
@@ -425,25 +414,40 @@ function EditableXrayPanel({
     );
   }
 
+  if (analysis.view_type === "lateral") {
+    return (
+      <Card tone="terracotta" className="space-y-2">
+        <p className="font-display text-[18px] text-ink-primary">
+          That&rsquo;s a side-on view.
+        </p>
+        <p className="text-[14px] text-ink-secondary">
+          A lateral film shows the spine from the side, which can&rsquo;t show
+          which way a scoliosis curve goes. If you have the front-on (PA or AP)
+          film, upload that one instead. Otherwise skip — nothing is lost.
+        </p>
+      </Card>
+    );
+  }
+
   const set = (patch: Partial<ConfirmFields>) =>
     setFields((p) => ({ ...p, ...patch }));
-  const setSeg = (
-    key: keyof ConfirmFields["segments"],
-    value: SegmentShift | null,
-  ) =>
-    setFields((p) => ({
-      ...p,
-      segments: { ...p.segments, [key]: value },
-    }));
+
+  const sideConflict =
+    selfReportedSide && fields.primaryLean && selfReportedSide !== fields.primaryLean;
 
   return (
     <Card className="space-y-7">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <SectionLabel>What I&rsquo;m reading</SectionLabel>
+          <div className="flex flex-wrap items-center gap-2">
+            <SectionLabel>What I&rsquo;m reading</SectionLabel>
+            <span className="inline-flex items-center rounded-full border border-drift/60 bg-terracotta-wash px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-[0.12em] text-terracotta-dark">
+              AI-read · unverified
+            </span>
+          </div>
           <p className="mt-2 text-[14px] text-ink-secondary max-w-md">
-            Here&rsquo;s what I&rsquo;m reading from your X-ray — please confirm
-            against your physio&rsquo;s notes before saving. Edit anything that
+            A rough read of the film, not a measurement. Check every field
+            against your clinician&rsquo;s report, correct anything that
             doesn&rsquo;t match, then apply.
           </p>
         </div>
@@ -453,6 +457,40 @@ function EditableXrayPanel({
           </span>
         ) : null}
       </div>
+
+      {!analysis.laterality_marker_visible ? (
+        <Card tone="muted" className="space-y-1">
+          <p className="text-[14px] font-medium text-ink-primary">
+            No left/right marker visible, so I haven&rsquo;t read a side.
+          </p>
+          <p className="text-[13.5px] text-ink-secondary">
+            A photo of an X-ray can be mirrored, and without the little
+            &ldquo;L&rdquo; or &ldquo;R&rdquo; on the film there&rsquo;s no way to
+            tell. Set the side from your clinician&rsquo;s report if you have it;
+            otherwise leave it and I&rsquo;ll stay side-neutral.
+            {analysis.laterality_marker_note
+              ? ` (${analysis.laterality_marker_note})`
+              : null}
+          </p>
+        </Card>
+      ) : null}
+
+      {analysis.other_observations.length > 0 ? (
+        <Card tone="terracotta" className="space-y-2">
+          <p className="text-[14px] font-medium text-ink-primary">
+            Something on the film worth showing your doctor
+          </p>
+          <ul className="list-disc space-y-1 pl-5 text-[13.5px] text-ink-secondary">
+            {analysis.other_observations.map((o, i) => (
+              <li key={i}>{o}</li>
+            ))}
+          </ul>
+          <p className="text-[12.5px] text-ink-tertiary">
+            I can&rsquo;t say what it is and won&rsquo;t guess. It may be
+            nothing. Please have a clinician look at the original film.
+          </p>
+        </Card>
+      ) : null}
 
       <div className="space-y-3">
         <SectionLabel>Curve type</SectionLabel>
@@ -503,15 +541,21 @@ function EditableXrayPanel({
                 {s}
               </Chip>
             ))}
+            <Chip
+              selected={fields.primaryLean === null}
+              onClick={() => set({ primaryLean: null })}
+            >
+              Unsure
+            </Chip>
           </div>
-        </div>
-        <div className="space-y-3">
-          <SectionLabel>Estimated Cobb (primary)</SectionLabel>
-          <Input
-            value={fields.cobbRange}
-            placeholder="e.g. 20–25°"
-            onChange={(e) => set({ cobbRange: e.target.value })}
-          />
+          {sideConflict ? (
+            <p className="text-[13px] leading-relaxed text-terracotta-dark">
+              You said {selfReportedSide} on the curve step; this reads{" "}
+              {fields.primaryLean}. If you apply as-is I&rsquo;ll set the side to
+              unknown and keep your programme side-neutral until a clinician
+              settles it.
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -554,56 +598,33 @@ function EditableXrayPanel({
                     {s}
                   </Chip>
                 ))}
+                <Chip
+                  selected={fields.secondaryLean === null}
+                  onClick={() => set({ secondaryLean: null })}
+                >
+                  Unsure
+                </Chip>
               </div>
             </div>
           </div>
         ) : null}
       </div>
 
-      <div className="space-y-4 border-t border-border/60 pt-6">
-        <SectionLabel>Segmental shift</SectionLabel>
-        <div className="space-y-3">
-          {(
-            [
-              { key: "cervical", label: "I · Cervical" },
-              { key: "upperThoracic", label: "II · Upper thoracic" },
-              { key: "lowerThoracic", label: "III · Lower thoracic" },
-              { key: "lumbar", label: "IV · Lumbar" },
-            ] as {
-              key: keyof ConfirmFields["segments"];
-              label: string;
-            }[]
-          ).map((seg) => (
-            <div key={seg.key} className="flex items-center justify-between gap-3">
-              <span className="text-[14px] text-ink-primary">{seg.label}</span>
-              <div className="flex flex-wrap gap-2">
-                {SHIFT_OPTIONS.map((opt) => (
-                  <Chip
-                    key={opt.id}
-                    selected={fields.segments[seg.key] === opt.id}
-                    onClick={() => setSeg(seg.key, opt.id)}
-                  >
-                    {opt.label}
-                  </Chip>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {analysis.confidence_note ? (
-        <p className="text-[13px] text-ink-tertiary italic border-t border-border/60 pt-5">
-          {analysis.confidence_note}
-        </p>
-      ) : null}
+      <p className="text-[13px] leading-relaxed text-ink-tertiary border-t border-border/60 pt-5">
+        I don&rsquo;t estimate a Cobb angle from a photo — a film has to be
+        measured on the original. Your clinician&rsquo;s report has the number;
+        the severity band on the curve step is where it goes.
+        {analysis.confidence_note ? (
+          <span className="italic"> {analysis.confidence_note}</span>
+        ) : null}
+      </p>
 
       <div className="flex flex-wrap items-center gap-3 pt-2">
         <Button variant="primary" onClick={() => onApply(fields)}>
           {applied ? "Apply again" : "Save these confirmed values"}
         </Button>
         <Button variant="ghost" onClick={() => setFields(initial)}>
-          Reset to AI suggestion
+          Reset to AI read
         </Button>
       </div>
     </Card>

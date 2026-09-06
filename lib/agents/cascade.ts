@@ -1,7 +1,16 @@
-// Cascade models — rules-based propagation chains per scoliosis curve pattern.
-// Each chain lists stages in causal order; stage X "activates" when its
-// monitoring signal exceeds the threshold (personal baseline + 2σ when
-// available, else fixed mm threshold).
+// Watch-lists per curve pattern.
+//
+// Each list names the posture signals that commonly shift alongside a given
+// curve, in the order a clinician would typically look for them. An item is
+// "active" when its signal in recent scans exceeds the personal baseline
+// + 2σ (or a fixed fallback when no baseline exists yet).
+//
+// This used to be called a "cascade prediction". It is not one. The order
+// is a clinical heuristic, not a validated causal chain, and the webcam scan
+// cannot forecast progression. What it can honestly do is say "this signal
+// has moved beyond your usual range this week — worth a look". The table
+// name and column names (cascade_predictions, predicted_next) are kept for
+// schema stability; every user-facing surface calls this a watch-list.
 
 import type { CurvePatternKey } from "@/lib/exercises/types";
 

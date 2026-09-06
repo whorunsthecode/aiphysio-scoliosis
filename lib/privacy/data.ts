@@ -26,6 +26,8 @@ import type { OnboardingState } from "@/lib/onboarding/types";
 export const LOCAL_HEALTH_KEYS = [
   "balance.profile",
   "balance.sessions",
+  // Latest forward-bend (ATR) peak — side and degrees only, no readings.
+  "balance.atr",
 ] as const;
 
 // Fields stripped before an onboarding state is written to localStorage.

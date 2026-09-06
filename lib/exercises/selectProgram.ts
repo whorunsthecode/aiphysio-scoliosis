@@ -117,25 +117,108 @@ export function selectProgram(input: SelectionInput): SelectionResult {
   const usePhysio =
     !!physio && physio.exercises && physio.exercises.length > 0;
 
-  if (usePhysio) {
-    return physioClearedMode({
-      pattern,
-      profile: input.profile,
-      physio: physio!,
-      clarifications: input.physioClarifications ?? {},
-      pain: input.pain ?? [],
-      scan: input.scan ?? null,
-    });
+  // A "supervised" population (post-fusion, in a brace, pregnant, fragile
+  // bone, connective-tissue disorder) must not receive an algorithmically
+  // chosen asymmetric programme. A clinician's prescription is honoured as
+  // usual; without one they get gentle symmetric work and a clear ask.
+  if (!usePhysio && input.triage?.requiresClinicianPrescription) {
+    const gentle = gentleSymmetricProgramme(pattern);
+    gentle.notes.unshift(
+      "For your situation I'm not going to pick asymmetric exercises myself. Enter the programme your physio or surgical team gives you and I'll coach that instead.",
+    );
+    gentle.warnings = input.triage.hits
+      .filter((h) => h.rule.severity === "supervised")
+      .map((h) => `${h.rule.observation} ${h.rule.action}`);
+    return gentle;
   }
 
-  return selfGuidedMode({
+  const result = usePhysio
+    ? physioClearedMode({
+        pattern,
+        profile: input.profile,
+        physio: physio!,
+        clarifications: input.physioClarifications ?? {},
+        pain: input.pain ?? [],
+        scan: input.scan ?? null,
+      })
+    : selfGuidedMode({
+        pattern,
+        sides,
+        stiffHipSide,
+        profile: input.profile,
+        scan: input.scan ?? null,
+        pain: input.pain ?? [],
+      });
+
+  // An urgent red flag reduces the session: gentle, symmetric, no more than
+  // three items, on both paths. Previously reducesSession was computed and
+  // then read by nothing — the flag looked like a safety behaviour and wasn't.
+  if (input.triage?.reducesSession) {
+    return reduceProgramme(result, input.triage.hits);
+  }
+  return result;
+}
+
+// Tiers 4 and 5 are symmetric mobility and breathing — the only content safe
+// to offer without knowing what a clinician would say.
+const GENTLE_TIERS = new Set([4, 5]);
+const REDUCED_MAX = 3;
+
+function isGentle(e: Exercise): boolean {
+  return GENTLE_TIERS.has(e.tier) && !isSideDependent(e);
+}
+
+function gentleSymmetricProgramme(pattern: CurvePatternKey): SelectionResult {
+  const picked = EXERCISE_LIBRARY.filter(isGentle).slice(0, REDUCED_MAX);
+  return {
     pattern,
-    sides,
-    stiffHipSide,
-    profile: input.profile,
-    scan: input.scan ?? null,
-    pain: input.pain ?? [],
-  });
+    mode: "self_guided",
+    exercises: picked.map((exercise) => ({
+      source: "library",
+      exercise,
+      display: {
+        name: exercise.name,
+        description: exercise.description,
+        reps: exercise.reps ?? null,
+        sets: exercise.sets ?? null,
+        duration_seconds: exercise.duration_seconds ?? null,
+        side_cue: null,
+      },
+      reason: "Gentle, same-on-both-sides movement that's safe without a prescription",
+      flags: [],
+    })),
+    suggestions: [],
+    notes: [],
+    warnings: [],
+  };
+}
+
+function reduceProgramme(
+  result: SelectionResult,
+  hits: TriageResult["hits"],
+): SelectionResult {
+  const kept = result.exercises
+    .filter((e) => e.exercise && isGentle(e.exercise))
+    .slice(0, REDUCED_MAX);
+  const exercises =
+    kept.length > 0
+      ? kept
+      : gentleSymmetricProgramme(result.pattern).exercises;
+  return {
+    ...result,
+    exercises,
+    suggestions: [],
+    notes: [
+      "Today's session is deliberately light — gentle movement and breathing only — because of what you've told me. Get the thing you mentioned looked at, then we'll pick the full programme back up.",
+      ...result.notes,
+    ],
+    warnings: [
+      ...hits
+        .filter((h) => h.rule.severity === "urgent")
+        .map((h) => `${h.rule.observation} ${h.rule.action}`),
+      ...result.warnings,
+    ],
+  };
 }
 
 // An exercise is side-dependent when the library gives it a cue for specific

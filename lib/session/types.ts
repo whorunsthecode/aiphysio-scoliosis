@@ -7,6 +7,10 @@ import type { SelectionResult } from "@/lib/exercises/selectProgram";
 
 export type SessionPhase =
   | "preparing"
+  // The short ongoing red-flag screen, asked every session. The onboarding
+  // answers are deliberately not held in the browser, and symptoms change;
+  // an emergency answer here ends the session before any scan or exercise.
+  | "safety_check"
   | "pain_check"
   | "initial_scan"
   | "program_preview"
@@ -28,6 +32,7 @@ export type SessionState = {
 };
 
 export const SESSION_PHASES: { id: SessionPhase; title: string }[] = [
+  { id: "safety_check", title: "Quick safety check" },
   { id: "pain_check", title: "How you feel" },
   { id: "initial_scan", title: "Today's check-in" },
   { id: "program_preview", title: "Today's exercises" },

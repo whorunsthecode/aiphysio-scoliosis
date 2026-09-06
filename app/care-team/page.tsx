@@ -598,7 +598,7 @@ export default function CareTeamPage() {
             <PanelHeader
               icon={<Heart size={18} strokeWidth={1.5} />}
               title="Tier 1 — analysis layer"
-              tagline="Personalized baselines, pain correlations, cascade predictions. Rebuilt nightly."
+              tagline="Personalized baselines, pain correlations, pattern watch-list. Rebuilt nightly."
             />
             <div className="grid gap-4 lg:grid-cols-3">
               <Card>
@@ -665,14 +665,18 @@ export default function CareTeamPage() {
               </Card>
 
               <Card>
-                <SectionLabel>Cascade prediction</SectionLabel>
+                <SectionLabel>Watch-list for this pattern</SectionLabel>
+                <p className="mt-1 text-[12px] text-ink-tertiary">
+                  Scan signals above personal baseline this week. Observations,
+                  not a prediction of progression.
+                </p>
                 {!state.cascade ? (
                   <p className="mt-2 text-[13px] text-ink-secondary">
                     Not computed yet.
                   </p>
                 ) : state.cascade.active_stages.length === 0 ? (
                   <p className="mt-2 text-[13px] text-ink-secondary">
-                    No stages activated for{" "}
+                    Nothing above range for{" "}
                     <span className="font-mono text-ink-primary">
                       {state.cascade.curve_pattern}
                     </span>
@@ -694,7 +698,7 @@ export default function CareTeamPage() {
                     </ul>
                     {state.cascade.predicted_next.length > 0 ? (
                       <p className="mt-3 text-[12px] text-ink-secondary">
-                        Watch next:{" "}
+                        Also worth watching:{" "}
                         {state.cascade.predicted_next
                           .map((s) => s.stage.replace(/_/g, " "))
                           .join(", ")}

@@ -11,10 +11,17 @@ import type { OnboardingState } from "@/lib/onboarding/types";
 interface WelcomeStepProps {
   state: OnboardingState;
   setName: (name: string) => void;
+  update: (patch: Partial<OnboardingState>) => void;
   onNext: () => void;
 }
 
-export function WelcomeStep({ state, setName, onNext }: WelcomeStepProps) {
+const MIN_AGE = 5;
+const MAX_AGE = 110;
+
+export function WelcomeStep({ state, setName, update, onNext }: WelcomeStepProps) {
+  const age = state.ageYears ?? null;
+  const ageValid = typeof age === "number" && age >= MIN_AGE && age <= MAX_AGE;
+
   return (
     <div className="space-y-10">
       <div className="space-y-4">
@@ -57,20 +64,44 @@ export function WelcomeStep({ state, setName, onNext }: WelcomeStepProps) {
         </Card>
       </div>
 
-      <div className="space-y-2 max-w-md">
-        <SectionLabel>What should I call you?</SectionLabel>
-        <Input
-          placeholder="Your name"
-          value={state.name}
-          onChange={(e) => setName(e.target.value)}
-          autoFocus
-        />
+      <div className="grid gap-6 sm:grid-cols-[1fr_140px] max-w-xl">
+        <div className="space-y-2">
+          <SectionLabel>What should I call you?</SectionLabel>
+          <Input
+            placeholder="Your name"
+            value={state.name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+          />
+        </div>
+        <div className="space-y-2">
+          <SectionLabel>How old are you?</SectionLabel>
+          <Input
+            type="number"
+            inputMode="numeric"
+            min={MIN_AGE}
+            max={MAX_AGE}
+            placeholder="Age"
+            value={age ?? ""}
+            onChange={(e) => {
+              const n = e.target.value === "" ? null : Number(e.target.value);
+              update({ ageYears: n !== null && Number.isFinite(n) ? n : null });
+            }}
+          />
+        </div>
       </div>
+      {/* Age decides which safety rules apply — an unusual curve pattern
+          means something different at 13 than at 40 — and whether the
+          bracing note on the next step is about you. */}
+      <p className="-mt-6 max-w-xl text-[13px] text-ink-tertiary">
+        Age matters here: some safety rules only apply while you&rsquo;re still
+        growing, and so does the advice about bracing.
+      </p>
 
       <StepNav
         onNext={onNext}
         nextLabel="Let’s get started"
-        nextDisabled={state.name.trim().length === 0}
+        nextDisabled={state.name.trim().length === 0 || !ageValid}
       />
     </div>
   );

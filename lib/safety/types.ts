@@ -17,7 +17,12 @@
 // Wording is deliberately plain. "Numbness around your sit-bones or inner
 // thighs" beats "saddle anaesthesia" for a fourteen-year-old at 10pm.
 
-export type FlagSeverity = "emergency" | "urgent" | "review";
+//   supervised — not a danger sign, but a population for whom self-guided
+//               asymmetric exercise is inappropriate: post-fusion, in a brace,
+//               pregnant, osteoporotic / older with new pain, connective-tissue
+//               disorder. The app withholds the self-guided programme and asks
+//               for a clinician's prescription instead.
+export type FlagSeverity = "emergency" | "urgent" | "review" | "supervised";
 
 export type ScreeningAnswers = Record<string, boolean | undefined>;
 
@@ -64,6 +69,11 @@ export type TriageResult = {
   severity: FlagSeverity | null;
   // True when the exercise session must not proceed.
   blocksSession: boolean;
-  // True when the programme should be reduced rather than blocked.
+  // True when the programme should be reduced rather than blocked: gentle
+  // symmetric mobility and breathing only, at most three items.
   reducesSession: boolean;
+  // True when a self-guided programme must not be generated at all; the user
+  // needs a clinician-authored prescription. Gentle symmetric work is still
+  // offered so they are not left with nothing.
+  requiresClinicianPrescription: boolean;
 };
