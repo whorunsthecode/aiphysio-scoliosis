@@ -1,0 +1,333 @@
+<title>Balance Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one reading column; each diagram gets full width in its own scroll box, caption and legend beneath. */
+  :root {
+    --bg: #f3f5f3;
+    --surface: #ffffff;
+    --ink: #1b2320;
+    --muted: #5a6661;
+    --rule: #cfd7d2;
+    --rule-strong: #a9b5ae;
+    --sage: #3f7050;
+    --sage-tint: #e2ede5;
+    --model: #97661a;
+    --model-tint: #f7ecd6;
+
+    --display: "Fraunces", Georgia, "Times New Roman", serif;
+    --sans: "Inter", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #111513; --surface: #181e1b; --ink: #e3eae6; --muted: #9ba7a1;
+      --rule: #2d3531; --rule-strong: #46514b; --sage: #8fc39f; --sage-tint: #1c2b22;
+      --model: #e3b566; --model-tint: #33291a; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #111513; --surface: #181e1b; --ink: #e3eae6; --muted: #9ba7a1;
+    --rule: #2d3531; --rule-strong: #46514b; --sage: #8fc39f; --sage-tint: #1c2b22;
+    --model: #e3b566; --model-tint: #33291a; color-scheme: dark;
+  }
+
+  body { background: var(--bg); color: var(--ink); font: 16px/1.6 var(--sans); padding-inline: 20px; padding-block: 56px 80px; }
+  .wrap { max-width: 1080px; margin: 0 auto; display: grid; gap: 56px; }
+  header { display: grid; gap: 12px; max-width: 64ch; }
+  .eyebrow { font: 500 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--sage); margin: 0; }
+  h1 { font: 600 clamp(32px, 5vw, 46px)/1.08 var(--display); letter-spacing: -.01em; margin: 0; text-wrap: balance; }
+  h2 { font: 600 24px/1.2 var(--display); margin: 0; text-wrap: balance; }
+  p { margin: 0; }
+  .lede { color: var(--muted); font-size: 17px; }
+
+  section { display: grid; gap: 16px; }
+  .scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 16px; }
+  svg { display: block; width: 100%; min-width: 860px; height: auto; color: var(--muted); }
+  figure { margin: 0; display: grid; gap: 14px; }
+  figcaption { color: var(--muted); max-width: 72ch; font-size: 15px; }
+  figcaption strong { color: var(--ink); font-weight: 600; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 20px; font: 13px var(--sans); color: var(--muted); list-style: none; padding: 0; margin: 0; }
+  .legend li { display: flex; align-items: center; gap: 8px; }
+  .sw { width: 18px; height: 12px; border-radius: 2px; border: 1.5px solid; }
+  .sw.model { background: var(--model-tint); border-color: var(--model); }
+  .sw.gate { background: var(--sage-tint); border-color: var(--sage); }
+  .sw.plain { background: var(--surface); border-color: var(--rule-strong); }
+  .sw.opt { background: var(--surface); border-color: var(--muted); border-style: dashed; }
+
+  footer { color: var(--muted); font-size: 13.5px; border-top: 1px solid var(--rule); padding-top: 16px; max-width: 72ch; }
+  code { font: 13px var(--mono); }
+
+  /* SVG vocabulary */
+  .zone { fill: none; stroke: var(--rule-strong); stroke-dasharray: 4 5; }
+  .box { fill: var(--surface); stroke: var(--rule-strong); stroke-width: 1.2; }
+  .gate { fill: var(--sage-tint); stroke: var(--sage); stroke-width: 1.2; }
+  .model { fill: var(--model-tint); stroke: var(--model); stroke-width: 1.4; }
+  .opt { fill: var(--surface); stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 5 4; }
+  .t { fill: var(--ink); font: 600 13px var(--sans); }
+  .s { fill: var(--muted); font: 12px var(--sans); }
+  .zl { fill: var(--muted); font: 500 11px var(--mono); letter-spacing: .1em; }
+  .lbl { fill: var(--muted); font: 11px var(--mono); }
+  .lbl.acc { fill: var(--sage); }
+  .hd { fill: var(--muted); font: 500 11px var(--mono); letter-spacing: .1em; }
+  .wire { stroke: currentColor; stroke-width: 1.4; fill: none; }
+  .wire.skip { stroke: var(--sage); stroke-dasharray: 5 4; }
+  .redact { fill: var(--sage); }
+  .redact-t { fill: var(--surface); font: 600 10px var(--mono); letter-spacing: .06em; }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Balance · scoliosis home-exercise coach</p>
+    <h1>How Balance is built</h1>
+    <p class="lede">Two diagrams. The first shows where each piece runs and what crosses each boundary. The second shows the rule behind every model call: the model proposes, and deterministic code decides what reaches you.</p>
+  </header>
+
+  <section aria-labelledby="h-system">
+    <h2 id="h-system">Where things run</h2>
+    <figure>
+      <div class="scroll">
+        <svg viewBox="0 0 1040 610" role="img" aria-label="System diagram. Camera pose tracking and the tilt sensor run on the device. The server sends the X-ray photo to Gemini and programme notes, chat and scheduled agent calls to Groq; agent context is redacted first. All messages land in the in-app inbox; Telegram is an opt-in mirror. Supabase stores data under row-level security.">
+          <defs>
+            <marker id="ah1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+            </marker>
+          </defs>
+
+          <!-- zones -->
+          <text class="zl" x="20" y="28">ON YOUR DEVICE</text>
+          <rect class="zone" x="20" y="40" width="230" height="412" rx="6"/>
+          <text class="zl" x="300" y="28">BALANCE SERVER · VERCEL</text>
+          <rect class="zone" x="300" y="40" width="300" height="412" rx="6"/>
+          <text class="zl" x="700" y="28">MODEL PROVIDERS</text>
+          <rect class="zone" x="700" y="40" width="320" height="312" rx="6"/>
+
+          <!-- device -->
+          <rect class="box" x="40" y="76" width="190" height="52" rx="4"/>
+          <text class="t" x="54" y="98">Onboarding</text>
+          <text class="s" x="54" y="116">curve, X-ray, physio notes</text>
+          <rect class="gate" x="40" y="152" width="190" height="52" rx="4"/>
+          <text class="t" x="54" y="174">Session</text>
+          <text class="s" x="54" y="192">screen, then exercises in code</text>
+          <rect class="box" x="40" y="228" width="190" height="52" rx="4"/>
+          <text class="t" x="54" y="250">Pose models</text>
+          <text class="s" x="54" y="268">video stays on this device</text>
+          <rect class="box" x="40" y="304" width="190" height="52" rx="4"/>
+          <text class="t" x="54" y="326">Tilt sensor</text>
+          <text class="s" x="54" y="344">trunk rotation, no camera</text>
+          <rect class="box" x="40" y="380" width="190" height="52" rx="4"/>
+          <text class="t" x="54" y="402">Inbox</text>
+          <text class="s" x="54" y="420">every message lands here</text>
+
+          <!-- server -->
+          <rect class="gate" x="320" y="76" width="260" height="52" rx="4"/>
+          <text class="t" x="334" y="98">X-ray read</text>
+          <text class="s" x="334" y="116">side kept only with an L/R marker</text>
+          <rect class="gate" x="320" y="152" width="260" height="52" rx="4"/>
+          <text class="t" x="334" y="174">Programme parse</text>
+          <text class="s" x="334" y="192">you clarify anything ambiguous</text>
+          <rect class="gate" x="320" y="228" width="260" height="52" rx="4"/>
+          <text class="t" x="334" y="250">Chat handler</text>
+          <text class="s" x="334" y="268">keyword pre-filter runs first</text>
+          <rect class="gate" x="320" y="304" width="260" height="52" rx="4"/>
+          <text class="t" x="334" y="326">Coach · Companion · Liaison</text>
+          <text class="s" x="334" y="344">scheduled; nudge cap checked first</text>
+          <rect class="gate" x="320" y="380" width="260" height="52" rx="4"/>
+          <text class="t" x="334" y="402">Delivery policy</text>
+          <text class="s" x="334" y="420">chooses the channel, not the caller</text>
+
+          <!-- providers -->
+          <rect class="model" x="720" y="76" width="280" height="52" rx="4"/>
+          <text class="t" x="734" y="98">Gemini 2.0 Flash-Lite</text>
+          <text class="s" x="734" y="116">reads the X-ray photo</text>
+          <rect class="model" x="720" y="152" width="280" height="188" rx="4"/>
+          <text class="t" x="734" y="176">Groq · Llama 3.3 70B</text>
+          <text class="s" x="734" y="194">parses notes, answers chat,</text>
+          <text class="s" x="734" y="210">plans the week, decides nudges</text>
+          <text class="s" x="734" y="226">JSON mode or tool calls</text>
+
+          <!-- telegram -->
+          <rect class="opt" x="720" y="380" width="280" height="52" rx="4"/>
+          <text class="t" x="734" y="402">Telegram (opt-in)</text>
+          <text class="s" x="734" y="420">mirror; never documents or safety</text>
+
+          <!-- supabase -->
+          <rect class="box" x="20" y="520" width="1000" height="72" rx="6"/>
+          <text class="t" x="40" y="549">Supabase</text>
+          <text class="s" x="40" y="571">Postgres with row-level security on every table · magic-link sign-in · private storage for X-rays and hand-off documents</text>
+
+          <!-- wires: device to server -->
+          <path class="wire" d="M230 96 H316" marker-end="url(#ah1)"/>
+          <text class="lbl" x="273" y="89" text-anchor="middle">photo</text>
+          <path class="wire" d="M230 112 H264 V172 H316" marker-end="url(#ah1)"/>
+          <text class="lbl" x="291" y="165" text-anchor="middle">notes</text>
+          <path class="wire" d="M320 406 H234" marker-end="url(#ah1)"/>
+          <text class="lbl" x="275" y="399" text-anchor="middle">all</text>
+
+          <!-- wires: server to providers -->
+          <path class="wire" d="M580 102 H716" marker-end="url(#ah1)"/>
+          <text class="lbl" x="648" y="95" text-anchor="middle">image</text>
+          <path class="wire" d="M580 178 H716" marker-end="url(#ah1)"/>
+          <text class="lbl" x="648" y="171" text-anchor="middle">notes</text>
+          <path class="wire" d="M580 254 H716" marker-end="url(#ah1)"/>
+          <text class="lbl" x="648" y="247" text-anchor="middle">message + profile</text>
+          <path class="wire" d="M580 328 H716" marker-end="url(#ah1)"/>
+          <rect class="redact" x="616" y="319" width="64" height="18" rx="3"/>
+          <text class="redact-t" x="648" y="332" text-anchor="middle">REDACT</text>
+          <text class="lbl acc" x="648" y="352" text-anchor="middle">no name, goal, ids</text>
+
+          <!-- wires: delivery -->
+          <path class="wire" d="M580 406 H716" marker-end="url(#ah1)"/>
+          <text class="lbl" x="648" y="399" text-anchor="middle">if opted in</text>
+
+          <!-- wires: to supabase -->
+          <path class="wire" d="M135 452 V516" marker-end="url(#ah1)"/>
+          <text class="lbl" x="145" y="490">as you</text>
+          <path class="wire" d="M450 452 V516" marker-end="url(#ah1)"/>
+          <text class="lbl" x="460" y="490">scheduled jobs, service role</text>
+        </svg>
+      </div>
+      <ul class="legend" aria-label="Legend">
+        <li><span class="sw model"></span>Model call</li>
+        <li><span class="sw gate"></span>Deterministic code that gates or shapes it</li>
+        <li><span class="sw plain"></span>Device or storage</li>
+        <li><span class="sw opt"></span>Optional, off by default</li>
+      </ul>
+      <figcaption><strong>Camera video never leaves the device, and exercise selection never touches a model.</strong> Pose tracking, the tilt-sensor measurement and the session's programme all run in the browser. Only three things go to a model provider: the X-ray photo, programme notes and chat, and the scheduled agents' context. The agents' context passes through one redaction function before it leaves; each agent writes a placeholder where your name goes, and the server fills it in at delivery. Every message lands in the in-app inbox; Telegram mirrors it only if you opt in, and never carries a clinical document or a safety escalation.</figcaption>
+    </figure>
+  </section>
+
+  <section aria-labelledby="h-gates">
+    <h2 id="h-gates">The model proposes, code decides</h2>
+    <figure>
+      <div class="scroll">
+        <svg viewBox="0 0 1080 552" role="img" aria-label="Five flows, each shown as before-the-model, model, after-the-model, and result. Chat: a keyword pre-filter can skip the model entirely. Weekly plan: context is redacted and side cues are overwritten from the library. Nudge: a cap stops the model being called. X-ray: the side is dropped without a laterality marker and every field is confirmed. Today's programme uses no model at all.">
+          <defs>
+            <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+            </marker>
+            <marker id="ah2s" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" class="redact"/>
+            </marker>
+          </defs>
+
+          <text class="hd" x="20" y="30">FLOW</text>
+          <text class="hd" x="315" y="30" text-anchor="middle">BEFORE THE MODEL</text>
+          <text class="hd" x="535" y="30" text-anchor="middle">MODEL</text>
+          <text class="hd" x="760" y="30" text-anchor="middle">AFTER THE MODEL</text>
+          <text class="hd" x="908" y="30">WHAT YOU GET</text>
+
+          <!-- row 1: chat -->
+          <text class="t" x="20" y="80">Chat message</text>
+          <text class="s" x="20" y="98">arrives from Telegram</text>
+          <rect class="gate" x="210" y="48" width="210" height="76" rx="4"/>
+          <text class="t" x="224" y="72">Keyword pre-filter</text>
+          <text class="s" x="224" y="90">red-flag phrase: fixed reply,</text>
+          <text class="s" x="224" y="106">safety flag logged</text>
+          <rect class="model" x="450" y="48" width="170" height="76" rx="4"/>
+          <text class="t" x="464" y="80">Llama 3.3 70B</text>
+          <text class="s" x="464" y="98">7 tools, one round</text>
+          <rect class="gate" x="650" y="48" width="220" height="76" rx="4"/>
+          <text class="t" x="664" y="72">Library ids only</text>
+          <text class="s" x="664" y="90">an exercise not in the library</text>
+          <text class="s" x="664" y="106">is refused by the tool</text>
+          <text class="t" x="908" y="80">A short reply</text>
+          <text class="s" x="908" y="98">pain and exercise logged</text>
+          <path class="wire" d="M420 86 H446" marker-end="url(#ah2)"/>
+          <path class="wire" d="M620 86 H646" marker-end="url(#ah2)"/>
+          <path class="wire" d="M870 86 H900" marker-end="url(#ah2)"/>
+          <path class="wire skip" d="M315 124 V138 H960 V128" marker-end="url(#ah2s)"/>
+          <text class="lbl acc" x="760" y="134" text-anchor="middle">on a red flag the model is skipped</text>
+
+          <!-- row 2: weekly plan -->
+          <text class="t" x="20" y="180">Weekly plan</text>
+          <text class="s" x="20" y="198">Coach, Sundays</text>
+          <rect class="gate" x="210" y="148" width="210" height="76" rx="4"/>
+          <text class="t" x="224" y="172">Context redacted</text>
+          <text class="s" x="224" y="190">no name, goal text or</text>
+          <text class="s" x="224" y="206">internal ids</text>
+          <rect class="model" x="450" y="148" width="170" height="76" rx="4"/>
+          <text class="t" x="464" y="180">Llama 3.3 70B</text>
+          <text class="s" x="464" y="198">JSON week plan</text>
+          <rect class="gate" x="650" y="148" width="220" height="76" rx="4"/>
+          <text class="t" x="664" y="172">Side cues overwritten</text>
+          <text class="s" x="664" y="190">from the library for your</text>
+          <text class="s" x="664" y="206">curve pattern</text>
+          <text class="t" x="908" y="180">Plan in your inbox</text>
+          <text class="s" x="908" y="198">name filled in on delivery</text>
+          <path class="wire" d="M420 186 H446" marker-end="url(#ah2)"/>
+          <path class="wire" d="M620 186 H646" marker-end="url(#ah2)"/>
+          <path class="wire" d="M870 186 H900" marker-end="url(#ah2)"/>
+
+          <!-- row 3: nudge -->
+          <text class="t" x="20" y="280">Nudge</text>
+          <text class="s" x="20" y="298">Companion, daily</text>
+          <rect class="gate" x="210" y="248" width="210" height="76" rx="4"/>
+          <text class="t" x="224" y="272">Cap: 2 nudges per 24 h</text>
+          <text class="s" x="224" y="290">plus quiet hours; if capped,</text>
+          <text class="s" x="224" y="306">the model is not called</text>
+          <rect class="model" x="450" y="248" width="170" height="76" rx="4"/>
+          <text class="t" x="464" y="272">Llama 3.3 70B</text>
+          <text class="s" x="464" y="290">send, note for physio,</text>
+          <text class="s" x="464" y="306">replan, or wait</text>
+          <rect class="gate" x="650" y="248" width="220" height="76" rx="4"/>
+          <text class="t" x="664" y="272">Delivery policy</text>
+          <text class="s" x="664" y="290">inbox always; Telegram only</text>
+          <text class="s" x="664" y="306">if you turned it on</text>
+          <text class="t" x="908" y="280">A nudge, or silence</text>
+          <text class="s" x="908" y="298">silence is the usual answer</text>
+          <path class="wire" d="M420 286 H446" marker-end="url(#ah2)"/>
+          <path class="wire" d="M620 286 H646" marker-end="url(#ah2)"/>
+          <path class="wire" d="M870 286 H900" marker-end="url(#ah2)"/>
+
+          <!-- row 4: x-ray -->
+          <text class="t" x="20" y="380">X-ray upload</text>
+          <text class="s" x="20" y="398">onboarding, optional</text>
+          <rect class="gate" x="210" y="348" width="210" height="76" rx="4"/>
+          <text class="t" x="224" y="380">File checks</text>
+          <text class="s" x="224" y="398">image type, 10 MB limit</text>
+          <rect class="model" x="450" y="348" width="170" height="76" rx="4"/>
+          <text class="t" x="464" y="380">Gemini Flash-Lite</text>
+          <text class="s" x="464" y="398">JSON read of the film</text>
+          <rect class="gate" x="650" y="348" width="220" height="76" rx="4"/>
+          <text class="t" x="664" y="372">No L/R marker, no side</text>
+          <text class="s" x="664" y="390">side-on film refused; you</text>
+          <text class="s" x="664" y="406">confirm every field</text>
+          <text class="t" x="908" y="372">Curve fields, unverified</text>
+          <text class="s" x="908" y="390">side checked against</text>
+          <text class="s" x="908" y="406">your own answer</text>
+          <path class="wire" d="M420 386 H446" marker-end="url(#ah2)"/>
+          <path class="wire" d="M620 386 H646" marker-end="url(#ah2)"/>
+          <path class="wire" d="M870 386 H900" marker-end="url(#ah2)"/>
+
+          <!-- row 5: programme, no model -->
+          <text class="t" x="20" y="480">Today's programme</text>
+          <text class="s" x="20" y="498">every session</text>
+          <rect class="gate" x="210" y="448" width="210" height="76" rx="4"/>
+          <text class="t" x="224" y="480">Red-flag screen</text>
+          <text class="s" x="224" y="498">9 yes/no questions</text>
+          <rect class="opt" x="450" y="448" width="170" height="76" rx="4"/>
+          <text class="t" x="464" y="480">No model</text>
+          <text class="s" x="464" y="498">selection is pure code</text>
+          <rect class="gate" x="650" y="448" width="220" height="76" rx="4"/>
+          <text class="t" x="664" y="472">Emergency: 0 exercises</text>
+          <text class="s" x="664" y="490">unknown or disputed side:</text>
+          <text class="s" x="664" y="506">no side-dependent work</text>
+          <text class="t" x="908" y="472">3 to 5 exercises</text>
+          <text class="s" x="908" y="490">or a stop notice with a</text>
+          <text class="s" x="908" y="506">summary for a clinician</text>
+          <path class="wire" d="M420 486 H446" marker-end="url(#ah2)"/>
+          <path class="wire" d="M620 486 H646" marker-end="url(#ah2)"/>
+          <path class="wire" d="M870 486 H900" marker-end="url(#ah2)"/>
+        </svg>
+      </div>
+      <figcaption><strong>Each model call sits between two pieces of ordinary code.</strong> The code before it decides whether the model is asked at all: a red-flag phrase in chat gets a fixed reply without the model, and a nudge over the daily cap is never generated. The code after it decides what the answer is allowed to change: the weekly plan's side cues are replaced from the exercise library because a wrong side can reinforce a curve, and an X-ray read without a left/right marker never sets a side. The one decision with the most clinical weight, choosing today's exercises, uses no model at all.</figcaption>
+    </figure>
+  </section>
+
+  <footer>
+    Drawn from the code at commit <code>1e0740f</code>. Balance is a working prototype: it builds, passes its automated checks and runs as a preview deployment, and has not yet been used by anyone other than its author.
+  </footer>
+</div>
