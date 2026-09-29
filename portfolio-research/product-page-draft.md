@@ -48,7 +48,7 @@ The first version of this rule is in my own May commit: the weekly-planning mode
 
 ### 3. Privacy over the channel people already use
 
-Telegram was the primary surface, and the physio hand-off PDF, an identifiable clinical document, went there as an attachment. I moved messaging in-app and made Telegram an opt-in mirror governed by one policy function: documents and safety escalations are never mirrored, whatever the caller asks. Models never receive the user's name; they write `{name}` and the app substitutes it at delivery. [E15, E16, E17] I gave up the "arrives where you already are" habit unless a user opts back in.
+Telegram was the primary surface, and the physio hand-off PDF, an identifiable clinical document, went there as an attachment. I moved messaging in-app and made Telegram an opt-in mirror governed by one policy function: documents and safety escalations are never mirrored, whatever the caller asks. Coach and Companion never receive the user's name; they write `{name}` and the app substitutes it at delivery. The chat handler builds its own context and still sends the name and goal text, a gap I found on 2026-09-29 and have not fixed. [E15, E16, E17] I gave up the "arrives where you already are" habit unless a user opts back in.
 
 ---
 
