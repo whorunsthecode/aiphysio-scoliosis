@@ -21,6 +21,9 @@
 // is exactly where someone will forget.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { SendResult } from "@/lib/telegram";
+
+type Send = (text: string, options: { chatId: string }) => Promise<SendResult>;
 
 export type MessageKind =
   | "message" // ordinary coaching text
@@ -49,6 +52,8 @@ export type DeliverInput = {
   // Storage path for an attached clinical document. Never transmitted
   // off-platform; the inbox resolves it to a short-lived signed URL on demand.
   documentPath?: string | null;
+  // Telegram sender. Defaults to lib/telegram; injected in checks.
+  send?: Send;
 };
 
 // Agents never receive the user's name — serializeContext withholds it. They
@@ -66,9 +71,26 @@ export function personalise(text: string, name?: string | null): string {
 
 export type DeliverResult = {
   inApp: boolean;
+  // True only when Telegram confirmed the message.
   mirrored: boolean;
   mirrorSuppressedBecause?: "not_opted_in" | "kind_never_mirrored" | "no_chat_id";
+  // A mirror was attempted and Telegram rejected it or the call failed.
+  mirrorFailed?: boolean;
+  // For a safety escalation: the fixed pointer was sent in place of it.
+  pointerSent?: boolean;
 };
+
+// Sent to Telegram in place of a safety escalation, to someone who opted in.
+// It says nothing about the user, so it is not a mirror of the escalation;
+// it stops the channel they are writing in from going silent at the moment
+// it matters most. REVIEW: wording, October 2026.
+export const SAFETY_POINTER =
+  "There's an important reply for you in your Balance inbox. If this is an emergency, call 999 now, or your local emergency number if you're outside Hong Kong.";
+
+async function defaultSend(text: string, options: { chatId: string }): Promise<SendResult> {
+  const { sendTelegramMessage } = await import("@/lib/telegram");
+  return sendTelegramMessage(text, options);
+}
 
 // What a mirrored notification says when the real content cannot travel.
 export function mirrorPointer(kind: MessageKind): string {
@@ -89,6 +111,7 @@ export async function deliver(input: DeliverInput): Promise<DeliverResult> {
     text,
     kind = "message",
     documentPath = null,
+    send = defaultSend,
   } = input;
 
   const { data: profile } = await supabase
@@ -112,25 +135,37 @@ export async function deliver(input: DeliverInput): Promise<DeliverResult> {
   });
   if (error) throw new Error(`In-app delivery failed: ${error.message}`);
 
+  const optedIn = !!profile?.telegram_opt_in;
+  const chatId = (profile?.telegram_chat_id as string | null | undefined) ?? null;
+
   if (!mayMirror(kind)) {
-    return { inApp: true, mirrored: false, mirrorSuppressedBecause: "kind_never_mirrored" };
+    const result: DeliverResult = { inApp: true, mirrored: false, mirrorSuppressedBecause: "kind_never_mirrored" };
+    if (kind === "safety" && optedIn && chatId) {
+      result.pointerSent = (await trySend(send, SAFETY_POINTER, chatId)).ok;
+    }
+    return result;
   }
 
-  if (!profile?.telegram_opt_in) {
+  if (!optedIn) {
     return { inApp: true, mirrored: false, mirrorSuppressedBecause: "not_opted_in" };
   }
-  if (!profile.telegram_chat_id) {
+  if (!chatId) {
     return { inApp: true, mirrored: false, mirrorSuppressedBecause: "no_chat_id" };
   }
 
+  // A failed mirror is not a failed delivery — the message is in the inbox —
+  // but it is reported as what it is.
+  const sent = await trySend(send, message, chatId);
+  return sent.ok ? { inApp: true, mirrored: true } : { inApp: true, mirrored: false, mirrorFailed: true };
+}
+
+async function trySend(send: Send, text: string, chatId: string): Promise<{ ok: boolean }> {
   try {
-    const { sendTelegramMessage } = await import("@/lib/telegram");
-    await sendTelegramMessage(message, {
-      chatId: profile.telegram_chat_id as string,
-    });
-    return { inApp: true, mirrored: true };
-  } catch {
-    // A failed mirror is not a failed delivery — the message is in the inbox.
-    return { inApp: true, mirrored: false };
+    const r = await send(text, { chatId });
+    if (!r.ok) console.warn("[deliver] Telegram send failed", r.error);
+    return { ok: r.ok };
+  } catch (e) {
+    console.warn("[deliver] Telegram send threw", e);
+    return { ok: false };
   }
 }
