@@ -18,7 +18,8 @@ export type ProfileLike = Pick<
   | "secondaryCurveApex"
   | "secondaryLeanSide"
   | "segmentShifts"
->;
+> &
+  Partial<Pick<OnboardingState, "sideConflict">>;
 
 const isThoracic = (a: ApexRegion | null) =>
   a === "upper_thoracic" || a === "lower_thoracic";
@@ -42,6 +43,10 @@ function singleCurveKey(
 }
 
 export function deriveCurvePattern(profile: ProfileLike): CurvePatternKey {
+  // Two sources disagreed about the side (XrayStep / session cross-check).
+  // Nothing side-specific can be derived until that is settled.
+  if (profile.sideConflict) return "any";
+
   // S-curve: combine primary + secondary into a double-major key.
   if (profile.curveType === "S") {
     const a = profile.primaryCurveApex;
@@ -61,12 +66,25 @@ export function deriveCurvePattern(profile: ProfileLike): CurvePatternKey {
       if (thorLean === "left" && lumLean === "right")
         return "double_left_thoracic_right_lumbar";
     }
-    // Fallback to the primary single curve if S-curve detail is incomplete.
+    // An S-curve has two curves. If either side is missing, or both are
+    // given as the same side, the pattern is unknown or contradictory. This
+    // used to fall back to the primary curve alone, which handed out
+    // side-specific work on half a picture.
+    return "any";
   }
 
   if (profile.curveType === "thoracolumbar") return "thoracolumbar";
 
   return singleCurveKey(profile.primaryCurveApex, profile.primaryLeanSide) ?? "any";
+}
+
+// Whether the curve's side is known well enough to give any left/right
+// instruction. False when the side is missing, when two sources disagree,
+// when an S-curve has only one side, and for thoracolumbar curves (the
+// library has no cue for them). Every side-specific path keys off this.
+export function sidesKnown(profile: ProfileLike): boolean {
+  const pattern = deriveCurvePattern(profile);
+  return pattern !== "any" && pattern !== "thoracolumbar";
 }
 
 // Derive concave/convex sides per spinal region from the pattern.
@@ -83,6 +101,12 @@ export type RegionalSides = {
 export function deriveRegionalSides(profile: ProfileLike): RegionalSides {
   const opposite = (s: Side | null): Side | null =>
     s === "left" ? "right" : s === "right" ? "left" : null;
+
+  // No regional side is reported unless the whole picture is known. Half an
+  // S-curve, or a side two sources disagree on, is not a basis for cueing.
+  if (!sidesKnown(profile)) {
+    return { thoracicConvex: null, thoracicConcave: null, lumbarConvex: null, lumbarConcave: null };
+  }
 
   let thoracicConvex: Side | null = null;
   let lumbarConvex: Side | null = null;
@@ -116,6 +140,9 @@ export function deriveRegionalSides(profile: ProfileLike): RegionalSides {
 // one side: 3+ segments shifted left → right hip flexor stiff, and vice
 // versa. Returns null when the pattern is mixed.
 export function inferStiffHipFlexorSide(profile: ProfileLike): Side | null {
+  // A left/right cue, so it waits for the curve's side to be known like
+  // every other one. Segment shifts alone are not enough.
+  if (!sidesKnown(profile)) return null;
   const shifts: SegmentShift[] = Object.values(profile.segmentShifts).filter(
     (s): s is SegmentShift => s !== null,
   );

@@ -544,6 +544,107 @@ console.log("\nunknown-curve programme\n");
   );
 }
 
+// ── side safety: the audit scenarios ──
+//
+// The randomised version lives in scripts/checks/side-safety.ts; these are
+// the specific cases the October 2026 audit found, kept as named regressions.
+console.log("\nside safety, audit scenarios\n");
+{
+  const LRX = /\b(left|right)\b/i;
+  const sideDep = (r: ReturnType<typeof selectProgram>) =>
+    [...r.exercises.map((e) => e.exercise), ...r.suggestions.map((s) => s.exercise)].filter(
+      (e) => e && Object.keys(e.asymmetric_cues ?? {}).some((k) => k !== "any"),
+    );
+  const base = { ...initialOnboardingState, name: "Audit" } as OnboardingState;
+
+  const disputedS = selectProgram({
+    profile: {
+      ...base,
+      curveType: "S",
+      primaryCurveApex: "lower_thoracic",
+      primaryLeanSide: null,
+      sideConflict: { selfReport: "left", xray: "right" },
+      secondaryCurveApex: "lumbar",
+      secondaryLeanSide: "left",
+    } as OnboardingState,
+  });
+  check(
+    "S-curve with a disputed primary side and a known secondary side: no side-dependent work",
+    sideDep(disputedS).length === 0 && disputedS.exercises.every((e) => !LRX.test(e.display.side_cue ?? "")),
+    `got ${sideDep(disputedS).map((e) => e?.id).join(", ")}`,
+  );
+
+  const shiftedOnly = selectProgram({
+    profile: {
+      ...base,
+      curveType: "unknown",
+      segmentShifts: { cervical: "left", upper_thoracic: "left", lower_thoracic: "left", lumbar: "left" },
+    } as OnboardingState,
+  });
+  check(
+    "segment shifts alone never produce a left/right cue",
+    shiftedOnly.exercises.every((e) => !LRX.test(e.display.side_cue ?? "") && !LRX.test(e.reason)),
+    shiftedOnly.exercises.map((e) => `${e.exercise?.id}: ${e.display.side_cue} / ${e.reason}`).join("; "),
+  );
+
+  const plank = (asymmetric_cues: string | null) => ({
+    exercises: [
+      {
+        source_text: "side plank",
+        library_match_id: "side_plank_convex_thoracic_side_down",
+        is_custom: false,
+        name: "Side plank",
+        description: "",
+        asymmetric_cues,
+        physio_specific_cues: [],
+        reps: null,
+        sets: 3,
+        duration_seconds: 30,
+        frequency: null,
+        ambiguities: [],
+      },
+    ],
+    lifestyle_notes: [],
+    parse_note: "",
+  });
+
+  const physioNoSide = selectProgram({ profile: { ...base, curveType: "unknown" } as OnboardingState, physioProgram: plank(null) });
+  check(
+    "physio mode, side unknown, no side in the prescription: side plank is withheld and the user is told to ask",
+    physioNoSide.exercises.length === 0 && physioNoSide.notes.some((n) => /side plank/i.test(n) && /physio/i.test(n)),
+    JSON.stringify({ ex: physioNoSide.exercises.map((e) => e.display.name), notes: physioNoSide.notes }),
+  );
+
+  const physioStatesSide = selectProgram({ profile: { ...base, curveType: "unknown" } as OnboardingState, physioProgram: plank("right side down") });
+  check(
+    "physio mode, side unknown, the physio wrote the side: kept, with the physio's words",
+    physioStatesSide.exercises.length === 1 &&
+      physioStatesSide.exercises[0].display.side_cue === "right side down" &&
+      physioStatesSide.exercises[0].display.side_cue_source === "physio",
+    JSON.stringify(physioStatesSide.exercises.map((e) => e.display)),
+  );
+
+  const physioConflict = selectProgram({
+    profile: { ...base, curveType: "C", primaryCurveApex: "lower_thoracic", primaryLeanSide: "right" } as OnboardingState,
+    physioProgram: plank("left side down"),
+  });
+  check(
+    "physio mode, the physio's side contradicts the known convex side: withheld, not just flagged",
+    physioConflict.exercises.length === 0 && physioConflict.notes.some((n) => /doesn't match/i.test(n)),
+    JSON.stringify({ ex: physioConflict.exercises.map((e) => e.display), notes: physioConflict.notes }),
+  );
+
+  const physioUnknownSugg = selectProgram({
+    profile: { ...base, curveType: "unknown" } as OnboardingState,
+    physioProgram: plank("right side down"),
+  });
+  check(
+    "physio mode, side unknown: no side-dependent suggestions",
+    physioUnknownSugg.suggestions.every((s) => !Object.keys(s.exercise.asymmetric_cues).some((k) => k !== "any")),
+    physioUnknownSugg.suggestions.map((s) => s.exercise.id).join(", "),
+  );
+}
+
 console.log(
   failures === 0 ? `\nall checks passed\n` : `\n${failures} check(s) failed\n`,
 );
