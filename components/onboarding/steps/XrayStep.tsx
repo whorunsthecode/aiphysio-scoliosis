@@ -70,7 +70,9 @@ export function XrayStep({
   const handleFile = (file: File | null) => {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = async () => {
+    // Loading the file only previews it. Nothing leaves the device until
+    // the user reads what will be sent and taps "Send it to be read".
+    reader.onload = () => {
       const dataUrl = typeof reader.result === "string" ? reader.result : null;
       update({
         xray: {
@@ -79,18 +81,17 @@ export function XrayStep({
           fileSize: file.size,
           dataUrl,
           parsed: null,
-          parseStatus: dataUrl ? "loading" : "idle",
+          parseStatus: "idle",
           parseError: null,
           applied: false,
         },
       });
-      if (!dataUrl) return;
-      await runParse(dataUrl);
     };
     reader.readAsDataURL(file);
   };
 
   const runParse = async (dataUrl: string) => {
+    update({ xray: { ...state.xray, parseStatus: "loading", parseError: null } });
     try {
       const res = await fetch("/api/xray", {
         method: "POST",
@@ -210,8 +211,8 @@ export function XrayStep({
             Drop your X-ray here
           </p>
           <p className="mt-1 text-[14px] text-ink-secondary">
-            JPG, PNG, or WEBP · front-on view · stays on your device until you
-            finish onboarding
+            JPG, PNG, or WEBP · front-on view · nothing is sent anywhere
+            until you confirm
           </p>
           <div className="mt-6">
             <Button
@@ -266,6 +267,45 @@ export function XrayStep({
               </button>
             </div>
           </Card>
+
+          {state.xray.parseStatus === "idle" ? (
+            <Card className="space-y-4">
+              <p className="font-display text-[18px] text-ink-primary">
+                Send this X-ray to be read?
+              </p>
+              {/* REVIEW: provider and retention wording, October 2026.
+                  Verify against Google's current Gemini API terms before
+                  real users see it. */}
+              <div className="space-y-2 text-[14px] leading-relaxed text-ink-secondary max-w-xl">
+                <p>
+                  To read it, the app sends this image to Google&rsquo;s Gemini
+                  service. Google receives the image and nothing else: not your
+                  name, your account or your answers. Balance does not keep a
+                  copy of the image.
+                </p>
+                <p>
+                  This app uses Gemini&rsquo;s free tier. Under Google&rsquo;s
+                  terms for that tier, Google may keep what is sent, use it to
+                  improve its products, and have people review it.
+                </p>
+                <p>
+                  If your name, date of birth or hospital number is on the
+                  film, crop or cover it before sending.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  variant="primary"
+                  onClick={() => state.xray.dataUrl && runParse(state.xray.dataUrl)}
+                >
+                  Send it to be read
+                </Button>
+                <Button variant="ghost" onClick={clear}>
+                  Remove it
+                </Button>
+              </div>
+            </Card>
+          ) : null}
 
           {state.xray.parseStatus === "loading" ? (
             <ParseStatusCard

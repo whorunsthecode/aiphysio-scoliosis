@@ -117,6 +117,15 @@ export default function PrivacyPage() {
               provider — your curve pattern and pain scores, never your name,
               age or anything identifying.
             </li>
+            {/* REVIEW: provider and retention wording, October 2026. Verify
+                against Google's current Gemini API terms before shipping. */}
+            <li>
+              If you ask the app to read an X-ray, the image goes to
+              Google&apos;s Gemini service, and only after you confirm. Balance
+              does not keep the image. The app uses Gemini&apos;s free tier,
+              under whose terms Google may keep what is sent, use it to improve
+              its products, and have people review it.
+            </li>
             <li>
               If you connect Telegram, messages pass through Telegram&apos;s
               servers. Anything you&apos;d rather they didn&apos;t hold, keep in
