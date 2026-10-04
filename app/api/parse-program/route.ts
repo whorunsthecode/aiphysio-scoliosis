@@ -42,6 +42,7 @@ export async function POST(req: Request) {
       user,
       temperature: 0.1,
       maxTokens: 3000,
+      timeoutMs: 20_000,
     });
     return NextResponse.json({ ok: true, parsed });
   } catch (e) {

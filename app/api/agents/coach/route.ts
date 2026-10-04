@@ -74,6 +74,9 @@ async function runCoach(req: Request, manual: boolean) {
       user: JSON.stringify(serializeContext(context)),
       temperature: 0.2,
       maxTokens: 2000,
+      // One call per run, up to 2000 tokens; leaves room for the context
+      // build and writes inside the 30s route limit.
+      timeoutMs: 20_000,
     });
   } catch (e) {
     return NextResponse.json(

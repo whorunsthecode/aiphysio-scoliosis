@@ -2,6 +2,9 @@
 // UK, CH). gemini-2.0-flash-lite is the lightweight tier that has broader
 // free-tier availability. Both support multimodal vision + JSON mode.
 const DEFAULT_MODEL = "gemini-2.0-flash-lite";
+// Per-call timeout; see lib/groq.ts. An image read is slower than text.
+export const IMAGE_TIMEOUT_MS = 20_000;
+
 const ENDPOINT = (model: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
@@ -18,6 +21,7 @@ interface AnalyzeImageOptions {
   mimeType: string;
   model?: string;
   temperature?: number;
+  timeoutMs?: number;
 }
 
 export async function analyzeImageJSON<T = unknown>({
@@ -26,6 +30,7 @@ export async function analyzeImageJSON<T = unknown>({
   mimeType,
   model = DEFAULT_MODEL,
   temperature = 0.2,
+  timeoutMs = IMAGE_TIMEOUT_MS,
 }: AnalyzeImageOptions): Promise<T> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -34,36 +39,47 @@ export async function analyzeImageJSON<T = unknown>({
 
   const url = `${ENDPOINT(model)}?key=${apiKey}`;
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            { text: prompt },
-            { inline_data: { mime_type: mimeType, data: imageBase64 } },
-          ],
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  let json: { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { text: prompt },
+              { inline_data: { mime_type: mimeType, data: imageBase64 } },
+            ],
+          },
+        ],
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature,
         },
-      ],
-      generationConfig: {
-        responseMimeType: "application/json",
-        temperature,
-      },
-    }),
-  });
+      }),
+      signal: ctrl.signal,
+    });
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new GeminiError(
-      `Gemini API ${res.status}: ${text || res.statusText}`,
-      res.status,
-    );
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new GeminiError(
+        `Gemini API ${res.status}: ${text || res.statusText}`,
+        res.status,
+      );
+    }
+    json = await res.json();
+  } catch (e) {
+    if (ctrl.signal.aborted) {
+      throw new GeminiError(`Gemini call timed out after ${timeoutMs}ms`, 504);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
   }
 
-  const json = (await res.json()) as {
-    candidates?: { content?: { parts?: { text?: string }[] } }[];
-  };
   const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new GeminiError("Gemini returned no content");
 
