@@ -290,7 +290,9 @@ v2 app (Supabase) ──> Tier 1 nightly cron ──> baselines / correlations /
 4. **Set `CRON_SECRET`** in Vercel env to a random string. Vercel injects it
    automatically as the Bearer token on cron-triggered requests; the
    `authorizeCron()` helper in [`lib/agents/server-supabase.ts`](./lib/agents/server-supabase.ts)
-   rejects production calls without it. Local dev bypasses if unset.
+   rejects production calls without it, and refuses to run at all in
+   production if it is unset. Local dev (`next dev`) bypasses it. The "Run
+   now" buttons on `/care-team` need you signed in as the profile's owner.
 5. **Seed synthetic data** so Tier 1 has signal and the agents have context:
    ```bash
    npx tsx scripts/seed-synthetic.ts
@@ -315,14 +317,20 @@ v2 app (Supabase) ──> Tier 1 nightly cron ──> baselines / correlations /
    ```
    Coach writes a `weekly_programs` row + sends a Telegram summary.
    Companion writes a notification or observation, or defers.
-8. **Set the Telegram webhook** after deploy so commands like `/status`,
+8. **Set `TELEGRAM_WEBHOOK_SECRET`** (1-256 characters: letters, digits, `_`, `-`)
+   in Vercel env. The webhook rejects updates that don't carry it, and in
+   production refuses to run without it. Only the chat in the profile's
+   `telegram_chat_id` (or `TELEGRAM_CHAT_ID` until one is linked) is answered.
+9. **Set the Telegram webhook** after deploy so commands like `/status`,
    `/program`, `/replan`, `/appointment YYYY-MM-DD HH:MM`, `/observations`,
    `/quiet 12` route to your function:
    ```bash
-   curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" \
-        -d "url=https://<your-domain>/api/telegram/webhook"
+   curl -H "Authorization: Bearer $CRON_SECRET" https://<your-domain>/api/telegram/setup
    ```
-9. **Open `/care-team`** to see all three agents, the Tier 1 outputs, the
+   This registers the slash commands and the webhook with the secret token.
+   Calling `setWebhook` by hand without `secret_token` leaves the bot unable
+   to reach the webhook.
+10. **Open `/care-team`** to see all three agents, the Tier 1 outputs, the
    inter-agent message bus, and live "Run X now" buttons. This is the
    portfolio screenshare surface.
 

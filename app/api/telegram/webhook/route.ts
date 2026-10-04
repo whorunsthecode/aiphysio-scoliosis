@@ -25,24 +25,59 @@ import {
 import { sendTelegramMessage, type TelegramUpdate } from "@/lib/telegram";
 import { handleConversation } from "@/lib/agents/conversation";
 import { deliver, type MessageKind } from "@/lib/messaging/deliver";
+import {
+  TELEGRAM_SECRET_HEADER,
+  chatAllowed,
+  isProductionRuntime,
+  telegramDecision,
+} from "@/lib/agents/auth";
 import { kindForChatReply, kindForObservations } from "@/lib/messaging/replyKind";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 export async function POST(req: Request) {
+  // 1. The request must come from Telegram: setWebhook registered a secret
+  //    token, and Telegram sends it back in this header on every update.
+  const auth = telegramDecision(
+    req.headers.get(TELEGRAM_SECRET_HEADER),
+    process.env.TELEGRAM_WEBHOOK_SECRET,
+    isProductionRuntime(),
+  );
+  if (!auth.ok) {
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: auth.status });
+  }
+
   const update = (await req.json().catch(() => null)) as TelegramUpdate | null;
   const text = update?.message?.text?.trim();
+  const chatId = update?.message?.chat?.id;
   if (!text) return NextResponse.json({ ok: true });
+  const envChat = process.env.TELEGRAM_CHAT_ID;
 
   if (!isSupabaseConfigured()) {
-    await notifyUnlinked("Supabase isn't connected on the server yet — agents are paused.");
+    if (chatAllowed(chatId, null, envChat)) {
+      await notifyUnlinked("Supabase isn't connected on the server yet — agents are paused.");
+    }
     return NextResponse.json({ ok: true });
   }
 
   const profileId = await getCurrentProfileId();
   if (!profileId) {
-    await notifyUnlinked("I don't have a profile yet — finish onboarding in the app first.");
+    if (chatAllowed(chatId, null, envChat)) {
+      await notifyUnlinked("I don't have a profile yet — finish onboarding in the app first.");
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  // 2. Anyone can message a bot. Only the chat linked to this profile (or
+  //    the deployment's own chat, until one is linked) may read or write its
+  //    data; everyone else is ignored without a reply.
+  const { data: link } = await getServiceSupabase()
+    .from("profiles")
+    .select("telegram_chat_id")
+    .eq("id", profileId)
+    .maybeSingle();
+  if (!chatAllowed(chatId, (link?.telegram_chat_id as string | null) ?? null, envChat)) {
     return NextResponse.json({ ok: true });
   }
 
