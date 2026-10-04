@@ -23,6 +23,7 @@ import {
   deriveCurvePattern,
   deriveRegionalSides,
   inferStiffHipFlexorSide,
+  sidesKnown,
   type ProfileLike,
 } from "./profile";
 import type { BodyRegionId, CurvePatternKey, Exercise } from "./types";
@@ -49,6 +50,9 @@ export type ProgramExercise = {
     sets?: number | null;
     duration_seconds?: number | null;
     side_cue?: string | null;
+    // Where the side cue came from: the physio's own written instruction,
+    // the library entry for the user's curve pattern, or a per-user hint.
+    side_cue_source?: "physio" | "library" | "personal" | null;
   };
   // Why this was selected — short, user-facing.
   reason: string;
@@ -228,10 +232,9 @@ function isSideDependent(e: Exercise): boolean {
   return Object.keys(e.asymmetric_cues ?? {}).some((k) => k !== "any");
 }
 
-// True when we know neither the thoracic nor the lumbar convexity, so no
-// side-specific instruction can be given honestly.
-function sidesUnknown(sides: ReturnType<typeof deriveRegionalSides>): boolean {
-  return !sides.thoracicConvex && !sides.lumbarConvex;
+function listNames(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -249,7 +252,12 @@ function physioClearedMode(args: {
   const { pattern, physio, clarifications } = args;
   const sides = deriveRegionalSides(args.profile);
 
-  const exercises: ProgramExercise[] = physio.exercises.map((pex, idx) => {
+  const known = sidesKnown(args.profile);
+  const withheldUnknown: string[] = [];
+  const withheldConflict: string[] = [];
+
+  const exercises: ProgramExercise[] = [];
+  physio.exercises.forEach((pex, idx) => {
     const matched = pex.library_match_id
       ? getExerciseById(pex.library_match_id) ?? null
       : null;
@@ -259,26 +267,55 @@ function physioClearedMode(args: {
       name: pex.name,
     });
 
-    // Special-case: if the physio prescribed side plank, check the side.
-    if (matched?.id === "side_plank_convex_thoracic_side_down") {
-      // Try to extract side from physio asymmetric_cues.
-      const cue = pex.asymmetric_cues?.toLowerCase() ?? "";
-      const physioSide = cue.includes("right side")
-        ? "right"
-        : cue.includes("left side")
-          ? "left"
-          : null;
-      const sideHit = checkSidePlankSide(physioSide, sides.thoracicConvex);
-      if (sideHit) hits.push(sideHit);
+    // The physio's own written cue, and whether it names a side.
+    const physioCue = pex.asymmetric_cues?.trim() || null;
+    const physioNamesSide = !!physioCue && /\b(left|right)\b/i.test(physioCue);
+
+    // Side-dependent library exercise: the side has to come from somewhere.
+    // The physio writing it down counts; otherwise the user's known curve
+    // pattern and the library cue for it. With neither, it is withheld
+    // rather than handed over as a coin flip.
+    let sideCue: string | null = null;
+    let sideCueSource: ProgramExercise["display"]["side_cue_source"] = null;
+    if (matched && isSideDependent(matched)) {
+      if (physioNamesSide) {
+        // Side plank: a physio's side that contradicts a known thoracic
+        // convexity is a conflict between two sources. Withheld until a
+        // clinician settles it, like every other side conflict.
+        if (matched.id === "side_plank_convex_thoracic_side_down") {
+          const cue = physioCue!.toLowerCase();
+          const physioSide = cue.includes("right side")
+            ? "right"
+            : cue.includes("left side")
+              ? "left"
+              : null;
+          if (checkSidePlankSide(physioSide, sides.thoracicConvex)) {
+            withheldConflict.push(pex.name);
+            return;
+          }
+        }
+        sideCue = physioCue;
+        sideCueSource = "physio";
+      } else if (known && matched.asymmetric_cues[pattern]) {
+        sideCue = physioCue
+          ? `${matched.asymmetric_cues[pattern]} (your physio: "${physioCue}")`
+          : matched.asymmetric_cues[pattern]!;
+        sideCueSource = "library";
+      } else {
+        withheldUnknown.push(pex.name);
+        return;
+      }
+    } else if (physioCue) {
+      // Not side-dependent in the library, or the physio's own exercise:
+      // their words are shown as written.
+      sideCue = physioCue;
+      sideCueSource = "physio";
+    } else if (matched?.asymmetric_cues["any"]) {
+      sideCue = matched.asymmetric_cues["any"];
+      sideCueSource = "library";
     }
 
-    const sideCue =
-      pex.asymmetric_cues ??
-      (matched?.asymmetric_cues[pattern] ??
-        matched?.asymmetric_cues["any"] ??
-        null);
-
-    return {
+    exercises.push({
       source: "physio",
       exercise: matched,
       display: {
@@ -288,6 +325,7 @@ function physioClearedMode(args: {
         sets: pex.sets ?? matched?.sets ?? null,
         duration_seconds: pex.duration_seconds ?? matched?.duration_seconds ?? null,
         side_cue: sideCue,
+        side_cue_source: sideCueSource,
       },
       reason: matched
         ? "Prescribed by your physio"
@@ -298,7 +336,7 @@ function physioClearedMode(args: {
         note: h.rule.reason_user_facing,
       })),
       physio_clarification: clarifications[idx]?.trim() || undefined,
-    };
+    });
   });
 
   // Library suggestions — exercises that fit the user's pattern but aren't
@@ -311,6 +349,9 @@ function physioClearedMode(args: {
   const suggestions = applicableForPattern(pattern)
     .filter((e) => !physioIds.has(e.id))
     .filter((e) => e.tier <= 2)
+    // A side-dependent suggestion needs the cue for this user's pattern;
+    // without one it would be a suggestion with no side.
+    .filter((e) => !isSideDependent(e) || (known && !!e.asymmetric_cues[pattern]))
     .slice(0, 2)
     .map<ProgramSuggestion>((exercise) => ({
       exercise,
@@ -325,6 +366,16 @@ function physioClearedMode(args: {
 
   const notes: string[] = [];
   if (physio.parse_note) notes.push(physio.parse_note);
+  if (withheldUnknown.length > 0) {
+    notes.push(
+      `I've left out ${listNames(withheldUnknown)} for now. ${withheldUnknown.length === 1 ? "It needs" : "They need"} to be done on one particular side, and your programme doesn't say which. Ask your physio which side, and add it to your programme or your curve details.`,
+    );
+  }
+  if (withheldConflict.length > 0) {
+    notes.push(
+      `I've left out ${listNames(withheldConflict)} for now. The side in your physio's programme doesn't match the side your curve bulges toward in your profile. Check with your physio which is right.`,
+    );
+  }
   if (suggestions.length > 0) {
     notes.push(
       "Suggestions below are research-aligned additions — your physio's program always wins.",
@@ -356,9 +407,12 @@ function selfGuidedMode(args: {
   const { pattern, sides, stiffHipSide, scan, pain } = args;
   const notes: string[] = [];
 
+  const known = sidesKnown(args.profile);
+
   // Step 1: candidates = library, applicable, not contraindicated.
   let candidates = applicableForPattern(pattern);
   candidates = candidates.filter((e) => !exerciseContraindicated(e, sides));
+
 
   // Step 1b: when we do not know which way the curve bends, withhold every
   // exercise whose benefit depends on being done on a particular side.
@@ -370,7 +424,7 @@ function selfGuidedMode(args: {
   // Held on the wrong side it reinforces the curve rather than opposing it.
   // A coin flip is not an acceptable default when the downside is making
   // someone's scoliosis worse, so these are withheld until the curve is known.
-  if (sidesUnknown(sides)) {
+  if (!known) {
     const before = candidates.length;
     candidates = candidates.filter((e) => !isSideDependent(e));
     if (candidates.length < before) {
@@ -379,6 +433,11 @@ function selfGuidedMode(args: {
       );
     }
   }
+
+  // A side-dependent exercise is only usable with the cue for this user's
+  // pattern. Bird dog's cue is written for thoracic curves; for a lumbar
+  // curve it would be handed over with no side at all.
+  candidates = candidates.filter((e) => !isSideDependent(e) || !!e.asymmetric_cues[pattern]);
 
   // Step 2: filter by pain. If a region scores >= PAIN_SKIP_THRESHOLD, skip
   // any exercise that loads that region. If >= PAIN_REDUCE_THRESHOLD, allow
@@ -459,10 +518,11 @@ function selfGuidedMode(args: {
   const exercises: ProgramExercise[] = picked
     .slice(0, TARGET_COUNT_MAX)
     .map<ProgramExercise>((ex) => {
-      const sideCue =
-        ex.asymmetric_cues[pattern] ??
-        ex.asymmetric_cues["any"] ??
-        applyPersonalSideCue(ex, sides, stiffHipSide);
+      const libraryCue = ex.asymmetric_cues[pattern] ?? ex.asymmetric_cues["any"] ?? null;
+      // Per-user hints name a side, so they wait for the side to be known.
+      const personalCue = known ? applyPersonalSideCue(ex, sides, stiffHipSide) : null;
+      const sideCue = libraryCue ?? personalCue;
+      const sideCueSource = libraryCue ? "library" : personalCue ? "personal" : null;
       return {
         source: "library",
         exercise: ex,
@@ -473,6 +533,7 @@ function selfGuidedMode(args: {
           sets: ex.sets ?? null,
           duration_seconds: ex.duration_seconds ?? null,
           side_cue: sideCue,
+          side_cue_source: sideCueSource,
         },
         reason: explainSelfGuidedSelection(ex, scan, sides, stiffHipSide),
         flags: [],
@@ -480,7 +541,7 @@ function selfGuidedMode(args: {
     });
 
   notes.push(
-    sidesUnknown(sides)
+    !known
       ? "Self-guided mode, working from what you've told me so far. Once you know which way your curve bends, I can tailor this properly — a physio or your X-ray report will have it."
       : "Self-guided mode — these are tailored to your curve from a curated library. A physio's eye is the most valuable thing for scoliosis; consider booking a baseline assessment if you haven't.",
   );
