@@ -2,6 +2,7 @@
 // /api/agents/liaison/check-upcoming cron 24h before any logged appointment.
 
 import { NextResponse } from "next/server";
+import { logFailure, publicError, statusOf } from "@/lib/errors";
 import { authorizeOwnerOrCron } from "@/lib/agents/auth";
 import {
   SUPABASE_NOT_CONFIGURED_RESPONSE,
@@ -120,9 +121,12 @@ async function runLiaison(req: Request, manual: boolean) {
       maxTokens: 3000,
     });
   } catch (e) {
+    // Nothing has been written yet; the run simply did not happen.
+    logFailure("agents/liaison", e);
+    const status = statusOf(e) === 504 ? 504 : 502;
     return NextResponse.json(
-      { ok: false, error: e instanceof Error ? e.message : String(e) },
-      { status: 502 },
+      { ok: false, error: publicError("agent", status) },
+      { status },
     );
   }
 

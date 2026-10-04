@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertCircle, Loader2, ShieldAlert, Sparkles } from "lucide-react";
+import { NETWORK_ERROR, publicError } from "@/lib/errors";
 import { Heading } from "@/components/ui/Heading";
 import { Textarea } from "@/components/ui/Input";
 import { SectionLabel } from "@/components/ui/SectionLabel";
@@ -55,7 +56,7 @@ export function ProgramStep({
         setProgram({
           parseStatus: "error",
           parseError:
-            "error" in json ? json.error : `Parser returned ${res.status}`,
+            "error" in json ? json.error : publicError("parse", res.status),
         });
         return;
       }
@@ -64,10 +65,10 @@ export function ProgramStep({
         parseStatus: "ok",
         parseError: null,
       });
-    } catch (e) {
+    } catch {
       setProgram({
         parseStatus: "error",
-        parseError: e instanceof Error ? e.message : "Network error",
+        parseError: NETWORK_ERROR,
       });
     }
   };

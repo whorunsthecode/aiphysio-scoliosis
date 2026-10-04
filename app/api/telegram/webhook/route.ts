@@ -32,6 +32,7 @@ import {
   telegramDecision,
 } from "@/lib/agents/auth";
 import { kindForChatReply, kindForObservations } from "@/lib/messaging/replyKind";
+import { logFailure, publicError } from "@/lib/errors";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -150,8 +151,8 @@ export async function POST(req: Request) {
         await handleFreeText(profileId, text);
     }
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Unknown error";
-    await reply(profileId, `Hit a snag: ${msg}`);
+    logFailure("telegram/webhook", e, { command: cmd });
+    await reply(profileId, publicError("save"));
   }
 
   return NextResponse.json({ ok: true });
@@ -311,7 +312,8 @@ async function logAppointment(profileId: string, datetime: string) {
     .select("id")
     .single();
   if (error) {
-    await reply(profileId, `Couldn't save: ${error.message}`);
+    logFailure("telegram/appointment", error);
+    await reply(profileId, publicError("save"));
     return;
   }
   await reply(profileId, `Logged. Liaison will prep your physio doc 24 hours before (${at.toLocaleString()}). Appt id: ${data.id.slice(0, 8)}.`,
@@ -355,16 +357,10 @@ async function handleFreeText(profileId: string, text: string) {
     // delivered as `safety`, so it is never mirrored to Telegram.
     await reply(profileId, result.reply, kindForChatReply(result.toolsCalled));
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    // Log the error so /care-team and the conversation history show what
-    // happened — silent error responses make production debugging painful.
-    await supabase.from("notifications").insert({
-      profile_id: profileId,
-      sent_by_agent: "companion",
-      message_text: `[error] ${msg}`,
-    });
-    await reply(profileId, `Hit a snag replying — ${msg}. Slash commands still work; try /help.`,
-    );
+    // The details go to the server log. They used to be written into the
+    // user's inbox as "[error] …" and quoted back in the reply.
+    logFailure("telegram/chat", e);
+    await reply(profileId, publicError("chat"));
   }
 }
 
@@ -427,7 +423,8 @@ async function setGoal(profileId: string, text: string) {
     .update({ goal_text: text, updated_at: new Date().toISOString() })
     .eq("id", profileId);
   if (error) {
-    await reply(profileId, `Couldn't save goal: ${error.message}`);
+    logFailure("telegram/goal", error);
+    await reply(profileId, publicError("save"));
     return;
   }
   await reply(profileId, `Saved. Coach will reference this on the next run:\n\n${text}`,

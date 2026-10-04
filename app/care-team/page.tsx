@@ -9,6 +9,7 @@
 // Inter-agent bus tail (last 20 messages).
 
 import { useCallback, useEffect, useState } from "react";
+import { NETWORK_ERROR, publicError } from "@/lib/errors";
 import Link from "next/link";
 import {
   AlertCircle,
@@ -144,10 +145,10 @@ export default function CareTeamPage() {
       setState(json);
       // Don't surface the 503 envelope as an error — render the setup card instead.
       if (!res.ok && json.configured !== false) {
-        setError(json.error ?? `State endpoint returned ${res.status}`);
+        setError(publicError("agent", res.status));
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+    } catch {
+      setError(NETWORK_ERROR);
     }
   }, []);
 
@@ -165,10 +166,11 @@ export default function CareTeamPage() {
       });
       const json = await res.json();
       if (!res.ok || json.ok === false) {
-        setError(`${path}: ${json.error ?? json.reason ?? res.status}`);
+        // Routes now return a plain sentence; fall back to one by status.
+        setError(typeof json.error === "string" ? json.error : publicError("agent", res.status));
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+    } catch {
+      setError(NETWORK_ERROR);
     } finally {
       setRunning(null);
       void refresh();
