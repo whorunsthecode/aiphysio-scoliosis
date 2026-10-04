@@ -15,6 +15,7 @@ import {
 } from "@/lib/exercises/contraindications";
 import type { OnboardingState } from "@/lib/onboarding/types";
 import type { ParsedProgram } from "@/lib/prompts/parseProgram";
+import { leaveOut, unresolvedAmbiguities } from "@/lib/onboarding/programClarifications";
 
 interface ProgramStepProps {
   state: OnboardingState;
@@ -92,6 +93,29 @@ export function ProgramStep({
   const status = state.physioProgram.parseStatus;
   const canParse = state.physioProgram.rawText.trim().length > 0;
 
+  // A flagged item must be answered or left out before the programme is
+  // used: in physio mode it becomes the prescription as written.
+  const unresolved =
+    status === "ok"
+      ? unresolvedAmbiguities(state.physioProgram.parsed, state.physioProgram.clarifications)
+      : [];
+
+  const leaveOutExercise = (idx: number) => {
+    if (!state.physioProgram.parsed) return;
+    const next = leaveOut(state.physioProgram.parsed, state.physioProgram.clarifications, idx);
+    setProgram({ parsed: next.parsed, clarifications: next.clarifications });
+  };
+
+  // "Skip for now" means no programme yet. A parse with outstanding
+  // questions is discarded rather than carried forward; the pasted text
+  // stays so it can be picked up later.
+  const skip = () => {
+    if (state.physioProgram.parsed) {
+      setProgram({ parsed: null, parseStatus: "idle", parseError: null, clarifications: {} });
+    }
+    onSkip();
+  };
+
   return (
     <div className="space-y-10">
       <div className="space-y-3">
@@ -157,10 +181,24 @@ export function ProgramStep({
           parsed={state.physioProgram.parsed}
           clarifications={state.physioProgram.clarifications}
           onClarification={setClarification}
+          onLeaveOut={leaveOutExercise}
         />
       ) : null}
 
-      <StepNav onBack={onBack} onNext={onNext} onSkip={onSkip} />
+      {unresolved.length > 0 ? (
+        <p className="text-[13.5px] text-ink-secondary">
+          Answer or leave out the {unresolved.length === 1 ? "flagged item" : `${unresolved.length} flagged items`} above
+          to continue. Your physio&rsquo;s programme is used as written, so a
+          question left open would become an instruction nobody gave.
+        </p>
+      ) : null}
+
+      <StepNav
+        onBack={onBack}
+        onNext={onNext}
+        onSkip={skip}
+        nextDisabled={unresolved.length > 0}
+      />
     </div>
   );
 }
@@ -169,10 +207,12 @@ function ParsedProgramSummary({
   parsed,
   clarifications,
   onClarification,
+  onLeaveOut,
 }: {
   parsed: ParsedProgram;
   clarifications: Record<number, string>;
   onClarification: (idx: number, note: string) => void;
+  onLeaveOut: (idx: number) => void;
 }) {
   const ambiguousCount = parsed.exercises.filter(
     (e) => e.ambiguities.length > 0,
@@ -277,7 +317,7 @@ function ParsedProgramSummary({
                 <div className="rounded-2xl border border-drift/40 bg-terracotta-wash px-4 py-3 space-y-3">
                   <div>
                     <p className="text-[12px] font-medium uppercase tracking-[0.14em] text-terracotta-dark/80">
-                      Worth confirming
+                      Needs an answer
                     </p>
                     <ul className="mt-1 space-y-0.5 text-[14px] text-ink-primary">
                       {ex.ambiguities.map((a, j) => (
@@ -290,8 +330,8 @@ function ParsedProgramSummary({
                       htmlFor={`clarify-${i}`}
                       className="text-[12px] font-medium text-ink-secondary"
                     >
-                      Anything to clarify? (Saved with the exercise so I get
-                      it right.)
+                      Your answer, from your physio&rsquo;s notes or what
+                      they told you. Saved with the exercise.
                     </label>
                     <textarea
                       id={`clarify-${i}`}
@@ -302,6 +342,13 @@ function ParsedProgramSummary({
                       className="w-full resize-none rounded-input border border-border bg-surface px-3 py-2 text-[14px] text-ink-primary placeholder:text-ink-tertiary focus:border-sage focus:shadow-focus-sage focus:outline-none"
                     />
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => onLeaveOut(i)}
+                    className="text-[13px] text-ink-secondary underline underline-offset-2 hover:text-ink-primary focus:outline-none focus:text-ink-primary"
+                  >
+                    Not sure? Leave this one out for now
+                  </button>
                 </div>
               ) : null}
 

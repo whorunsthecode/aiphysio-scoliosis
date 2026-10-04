@@ -19,7 +19,7 @@ TensorFlow.js, edge-tts.
 | Posture scan     | MoveNet Thunder via TensorFlow.js (accuracy-critical)         |
 | Exercise form    | MediaPipe Pose Landmarker (latency-critical)                  |
 | LLM (programs)   | Groq · `llama-3.3-70b-versatile` · JSON mode                  |
-| Vision (X-ray)   | Google Gemini 2.0 Flash · JSON mode                           |
+| Vision (X-ray)   | Google Gemini 2.0 Flash-Lite · JSON mode                      |
 | TTS              | `edge-tts` via Vercel Python runtime; browser SpeechSynthesis fallback |
 | Database         | Supabase Postgres (optional; localStorage fallback)           |
 | Hosting          | Vercel hobby tier                                             |
@@ -59,14 +59,14 @@ Visit `http://localhost:3000`. Without any keys, every feature still works:
 | Path                    | What                                                |
 | ----------------------- | --------------------------------------------------- |
 | `/`                     | Home — entry to all flows                           |
-| `/onboarding`           | 7-step setup (welcome → curve → segments → X-ray → physio program → lifestyle → pain) |
+| `/onboarding`           | 8-step setup (welcome → curve → segments → X-ray → physio program → lifestyle → pain → safety check) |
 | `/scan`                 | Standalone posture scan (MoveNet, multi-frame, tilt-aware on mobile) |
 | `/library`              | Full exercise library + today's selected program demo + contraindication ruleset |
 | `/exercise/[id]`        | Live coach (camera + MediaPipe + voice cues) for any of the 5 wired exercises |
 | `/session`              | Daily session orchestrator: pain → scan → 3–5 exercises → re-scan → comparison |
 | `/progress`             | Trend graphs (weighted regression with error bands) + lifestyle observations + history |
 | `/components-preview`   | Visual identity preview                             |
-| `/api/xray`             | POST: Gemini Flash X-ray analysis                   |
+| `/api/xray`             | POST: Gemini 2.0 Flash-Lite X-ray read              |
 | `/api/parse-program`    | POST: Groq physio-program parsing                   |
 | `/api/tts`              | POST: edge-tts (Python serverless function)         |
 
@@ -78,7 +78,7 @@ Visit `http://localhost:3000`. Without any keys, every feature still works:
 /app
   /api/xray            Next.js API route → Gemini
   /api/parse-program   Next.js API route → Groq
-  /onboarding          7-step flow (state in /lib/onboarding)
+  /onboarding          8-step flow (state in /lib/onboarding)
   /scan, /library      Single-page experiences
   /session             Session state machine (state in /lib/session)
   /exercise/[id]       Per-exercise coach
@@ -194,8 +194,11 @@ Telegram linkage and cron jobs that iterate profiles.
 ## Get the API keys
 
 - **Groq** — https://console.groq.com — generous free tier, JSON-mode supported
-- **Gemini** — https://aistudio.google.com/apikey — 1500 requests/day free on
-  Gemini 2.0 Flash
+- **Gemini** — https://aistudio.google.com/apikey — the app calls
+  `gemini-2.0-flash-lite` (set in `lib/gemini.ts`), which has free-tier
+  access in regions where `gemini-2.0-flash` does not. Check Google's current
+  quotas and terms; on the free tier Google may use what is sent to improve
+  its products.
 
 ---
 
@@ -266,7 +269,7 @@ v2 app (Supabase) ──> Tier 1 nightly cron ──> baselines / correlations /
                               ┌────────┬───────┴────────┬─────────┐
                               ▼        ▼                ▼         ▼
                             Coach   Companion       Liaison    (Tier 1)
-                          (Sun 8pm) (every 2h)   (24h before  (nightly
+                          (Sun 8pm) (daily)      (24h before  (nightly
                                                   appointment) analysis)
                               │        │                │
                               └────────┴────────┬───────┘
@@ -334,7 +337,7 @@ v2 app (Supabase) ──> Tier 1 nightly cron ──> baselines / correlations /
 | `/api/cron/correlations`                      | `0 4 * * *`                | Pearson + bootstrap CI for behavior↔pain pairs |
 | `/api/cron/cascade`                           | `0 5 * * *`                | Stage activation per curve-pattern model    |
 | `/api/agents/coach`                           | `0 12 * * 0`               | Sundays — plans the week ahead              |
-| `/api/agents/companion`                       | `0 0,2,4,6,8,10,12,14 * * *` | Every 2h, 8am-10pm in HK time (UTC+8)     |
+| `/api/agents/companion`                       | `0 0 * * *`                | Daily at 8am HK time (UTC+8). The every-2h cadence is in `.github/workflows/companion-frequent.yml`, off by default |
 
 **Liaison is currently dormant** — its cron is intentionally not in `vercel.json`
 because there's no active physio in the loop. The agent code is fully built
@@ -348,16 +351,19 @@ re-enable scheduled checks, add this line back to the `crons` array:
 That cron checks every 6 hours for appointments 18–30h out and fires Liaison
 for any without a generated doc.
 
-Vercel hobby plan supports unlimited cron, 10s function timeout. Each agent
-run completes inside that budget — context build runs queries in parallel,
-single Groq call (1-2s), 2-4 Supabase writes (~1s).
+Every agent and API route declares `maxDuration = 30` (seconds). Whether a
+deployment honours that, and how often crons may run, depends on the Vercel
+plan; check the current limits. On Hobby, crons run at most once a day, which
+is why Companion is daily here and the every-2h cadence lives in a GitHub
+Actions workflow. A run is one or two model calls (Companion, Coach, Liaison
+make one; chat makes up to two) plus a few Supabase reads and writes.
 
 ### Agent roles + non-negotiables
 
 - **Coach** plans the week. Stays inside the physio's program, never overrides
   contraindications, explains every change vs. the previous week. If fewer
   than 10 sessions exist, produces a continuation plan with that note.
-- **Companion** observes, runs every 2h, decides between SEND / MARK /
+- **Companion** observes, runs daily (every 2h if the workflow is on), decides between SEND / MARK /
   REPLAN_REQUEST / DEFER. Hard-capped at 2 nudges per 24h, never repeats
   within 48h, honors `/quiet N` from Telegram. Defers most of the time.
 - **Liaison** prepares physio handoff PDFs 24h before each logged appointment.

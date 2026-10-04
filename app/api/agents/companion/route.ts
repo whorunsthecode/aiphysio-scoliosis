@@ -19,6 +19,7 @@ import {
 import { COMPANION_SYSTEM_PROMPT } from "@/lib/agents/prompts";
 import { chatJSON } from "@/lib/groq";
 import { deliver } from "@/lib/messaging/deliver";
+import { isRepeatNudge } from "@/lib/agents/nudgeRepeat";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -125,6 +126,22 @@ async function runCompanion(req: Request, manual: boolean) {
       { ok: false, error: e instanceof Error ? e.message : String(e) },
       { status: 502 },
     );
+  }
+
+  // The no-repeat rule, in code. The prompt asks the model not to repeat a
+  // nudge from the last 48 hours; this makes sure. A repeat defers, and
+  // nothing is delivered.
+  if (
+    decision.action === "SEND" &&
+    decision.telegram_message &&
+    isRepeatNudge(
+      decision.telegram_message,
+      context.recentNotifications.filter((n) => n.sent_by_agent === "companion"),
+      Date.now(),
+      context.profile?.name ?? null,
+    )
+  ) {
+    decision = { ...decision, action: "DEFER", defer_reason: "repeat_within_48h" };
   }
 
   switch (decision.action) {
