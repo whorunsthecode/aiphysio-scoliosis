@@ -7,6 +7,7 @@
 // the request's host header.
 
 import { NextResponse } from "next/server";
+import { authorizeOwnerOrCron, isProductionRuntime } from "@/lib/agents/auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -27,6 +28,22 @@ const COMMANDS: { command: string; description: string }[] = [
 ];
 
 export async function GET(req: Request) {
+  // Re-pointing the bot's webhook is an admin action.
+  const auth = await authorizeOwnerOrCron(req);
+  if (!auth.ok) {
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: auth.status });
+  }
+
+  // The webhook rejects updates without this secret in production, so
+  // registering without it would silently break the bot.
+  const secretToken = process.env.TELEGRAM_WEBHOOK_SECRET;
+  if (!secretToken && isProductionRuntime()) {
+    return NextResponse.json(
+      { ok: false, error: "Set TELEGRAM_WEBHOOK_SECRET (1-256 characters: A-Z, a-z, 0-9, _ and -) before registering the webhook." },
+      { status: 503 },
+    );
+  }
+
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
     return NextResponse.json(
@@ -51,6 +68,9 @@ export async function GET(req: Request) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         url: webhookUrl,
+        // Telegram echoes this back in X-Telegram-Bot-Api-Secret-Token on
+        // every update; the webhook rejects requests without it.
+        ...(secretToken ? { secret_token: secretToken } : {}),
         // Drop any messages queued before the webhook was set so we don't
         // re-process old test messages.
         drop_pending_updates: true,

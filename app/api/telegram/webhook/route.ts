@@ -24,27 +24,61 @@ import {
 } from "@/lib/agents/server-supabase";
 import { sendTelegramMessage, type TelegramUpdate } from "@/lib/telegram";
 import { handleConversation } from "@/lib/agents/conversation";
+import { deliver, type MessageKind } from "@/lib/messaging/deliver";
+import {
+  TELEGRAM_SECRET_HEADER,
+  chatAllowed,
+  isProductionRuntime,
+  telegramDecision,
+} from "@/lib/agents/auth";
+import { kindForChatReply, kindForObservations } from "@/lib/messaging/replyKind";
+import { logFailure, publicError } from "@/lib/errors";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 export async function POST(req: Request) {
+  // 1. The request must come from Telegram: setWebhook registered a secret
+  //    token, and Telegram sends it back in this header on every update.
+  const auth = telegramDecision(
+    req.headers.get(TELEGRAM_SECRET_HEADER),
+    process.env.TELEGRAM_WEBHOOK_SECRET,
+    isProductionRuntime(),
+  );
+  if (!auth.ok) {
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: auth.status });
+  }
+
   const update = (await req.json().catch(() => null)) as TelegramUpdate | null;
   const text = update?.message?.text?.trim();
+  const chatId = update?.message?.chat?.id;
   if (!text) return NextResponse.json({ ok: true });
+  const envChat = process.env.TELEGRAM_CHAT_ID;
 
   if (!isSupabaseConfigured()) {
-    await sendTelegramMessage(
-      "Supabase isn't connected on the server yet — agents are paused.",
-    );
+    if (chatAllowed(chatId, null, envChat)) {
+      await notifyUnlinked("Supabase isn't connected on the server yet — agents are paused.");
+    }
     return NextResponse.json({ ok: true });
   }
 
   const profileId = await getCurrentProfileId();
   if (!profileId) {
-    await sendTelegramMessage(
-      "I don't have a profile yet — finish onboarding in the app first.",
-    );
+    if (chatAllowed(chatId, null, envChat)) {
+      await notifyUnlinked("I don't have a profile yet — finish onboarding in the app first.");
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  // 2. Anyone can message a bot. Only the chat linked to this profile (or
+  //    the deployment's own chat, until one is linked) may read or write its
+  //    data; everyone else is ignored without a reply.
+  const { data: link } = await getServiceSupabase()
+    .from("profiles")
+    .select("telegram_chat_id")
+    .eq("id", profileId)
+    .maybeSingle();
+  if (!chatAllowed(chatId, (link?.telegram_chat_id as string | null) ?? null, envChat)) {
     return NextResponse.json({ ok: true });
   }
 
@@ -53,8 +87,7 @@ export async function POST(req: Request) {
   try {
     switch (cmd.toLowerCase()) {
       case "/start":
-        await sendTelegramMessage(
-          "Hi — I'm Balance, your scoliosis care team. Three agents watch your data and reach out when there's something worth saying.\n\nTry /status to see where you are right now.",
+        await reply(profileId, "Hi — I'm Balance, your scoliosis care team. Three agents watch your data and reach out when there's something worth saying.\n\nTry /status to see where you are right now.",
         );
         break;
 
@@ -95,8 +128,7 @@ export async function POST(req: Request) {
         break;
 
       case "/help":
-        await sendTelegramMessage(
-          [
+        await reply(profileId, [
             "Commands:",
             "/status — this week at a glance",
             "/program — full weekly program",
@@ -119,11 +151,32 @@ export async function POST(req: Request) {
         await handleFreeText(profileId, text);
     }
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Unknown error";
-    await sendTelegramMessage(`Hit a snag: ${msg}`);
+    logFailure("telegram/webhook", e, { command: cmd });
+    await reply(profileId, publicError("save"));
   }
 
   return NextResponse.json({ ok: true });
+}
+
+// ─── Delivery ───────────────────────────────────────────────────────
+
+// Every reply to a known profile goes through deliver(): in-app inbox first,
+// Telegram only if this profile opted in, and never the content of a safety
+// escalation. Replies used to go straight to Telegram, around the opt-in.
+async function reply(profileId: string, text: string, kind: MessageKind = "message") {
+  await deliver({
+    supabase: getServiceSupabase(),
+    profileId,
+    agent: "companion",
+    text,
+    kind,
+  });
+}
+
+// The only direct Telegram send left: a fixed notice when there is no
+// profile to deliver to. It carries no user data.
+async function notifyUnlinked(text: string) {
+  await sendTelegramMessage(text);
 }
 
 // ─── Command handlers ───────────────────────────────────────────────
@@ -179,7 +232,7 @@ async function replyStatus(profileId: string) {
     const at = new Date(upcomingAppts.data[0].appointment_at);
     lines.push(`Next physio: ${at.toLocaleString()}`);
   }
-  await sendTelegramMessage(lines.join("\n"));
+  await reply(profileId, lines.join("\n"));
 }
 
 async function replyProgram(profileId: string) {
@@ -191,7 +244,7 @@ async function replyProgram(profileId: string) {
     .eq("is_active", true)
     .maybeSingle();
   if (!data) {
-    await sendTelegramMessage("No active program yet.");
+    await reply(profileId, "No active program yet.");
     return;
   }
   const lines: string[] = [];
@@ -221,7 +274,7 @@ async function replyProgram(profileId: string) {
     }
   }
   lines.push(`\nCoach: ${truncate(data.reasoning, 300)}`);
-  await sendTelegramMessage(lines.join("\n"));
+  await reply(profileId, lines.join("\n"));
 }
 
 async function requestReplan(profileId: string) {
@@ -233,22 +286,19 @@ async function requestReplan(profileId: string) {
     message_type: "replan_request",
     payload: { reason: "user requested via Telegram" },
   });
-  await sendTelegramMessage(
-    "Replan request queued — Coach will pick it up on its next run.",
+  await reply(profileId, "Replan request queued — Coach will pick it up on its next run.",
   );
 }
 
 async function logAppointment(profileId: string, datetime: string) {
   if (!datetime) {
-    await sendTelegramMessage(
-      "Use: /appointment YYYY-MM-DD HH:MM (24-hour)",
+    await reply(profileId, "Use: /appointment YYYY-MM-DD HH:MM (24-hour)",
     );
     return;
   }
   const at = new Date(datetime.replace(" ", "T"));
   if (isNaN(at.getTime()) || at.getTime() < Date.now()) {
-    await sendTelegramMessage(
-      "That date didn't parse, or it's in the past. Use YYYY-MM-DD HH:MM.",
+    await reply(profileId, "That date didn't parse, or it's in the past. Use YYYY-MM-DD HH:MM.",
     );
     return;
   }
@@ -262,11 +312,11 @@ async function logAppointment(profileId: string, datetime: string) {
     .select("id")
     .single();
   if (error) {
-    await sendTelegramMessage(`Couldn't save: ${error.message}`);
+    logFailure("telegram/appointment", error);
+    await reply(profileId, publicError("save"));
     return;
   }
-  await sendTelegramMessage(
-    `Logged. Liaison will prep your physio doc 24 hours before (${at.toLocaleString()}). Appt id: ${data.id.slice(0, 8)}.`,
+  await reply(profileId, `Logged. Liaison will prep your physio doc 24 hours before (${at.toLocaleString()}). Appt id: ${data.id.slice(0, 8)}.`,
   );
 }
 
@@ -274,20 +324,20 @@ async function replyObservations(profileId: string) {
   const supabase = getServiceSupabase();
   const { data } = await supabase
     .from("agent_observations")
-    .select("created_at, observation_text, severity, observed_by_agent")
+    .select("created_at, observation_text, severity, category, observed_by_agent")
     .eq("profile_id", profileId)
     .gte("created_at", new Date(Date.now() - 7 * 86400000).toISOString())
     .order("created_at", { ascending: false })
     .limit(10);
   if (!data || data.length === 0) {
-    await sendTelegramMessage("No observations marked in the past week.");
+    await reply(profileId, "No observations marked in the past week.");
     return;
   }
   const lines = data.map((o) => {
     const when = new Date(o.created_at).toLocaleDateString();
     return `${when} (${o.observed_by_agent}): ${o.observation_text}`;
   });
-  await sendTelegramMessage(`Recent observations\n\n${lines.join("\n\n")}`);
+  await reply(profileId, `Recent observations\n\n${lines.join("\n\n")}`, kindForObservations(data));
 }
 
 async function handleFreeText(profileId: string, text: string) {
@@ -302,24 +352,15 @@ async function handleFreeText(profileId: string, text: string) {
 
   try {
     const result = await handleConversation(profileId, text);
-    await sendTelegramMessage(result.reply);
-    await supabase.from("notifications").insert({
-      profile_id: profileId,
-      sent_by_agent: "companion",
-      message_text: result.reply,
-    });
+    // deliver() writes the inbox row. A reply that flagged a safety concern
+    // (the fixed red-flag reply, or the model calling flag_safety) is
+    // delivered as `safety`, so it is never mirrored to Telegram.
+    await reply(profileId, result.reply, kindForChatReply(result.toolsCalled));
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    // Log the error so /care-team and the conversation history show what
-    // happened — silent error responses make production debugging painful.
-    await supabase.from("notifications").insert({
-      profile_id: profileId,
-      sent_by_agent: "companion",
-      message_text: `[error] ${msg}`,
-    });
-    await sendTelegramMessage(
-      `Hit a snag replying — ${msg}. Slash commands still work; try /help.`,
-    );
+    // The details go to the server log. They used to be written into the
+    // user's inbox as "[error] …" and quoted back in the reply.
+    logFailure("telegram/chat", e);
+    await reply(profileId, publicError("chat"));
   }
 }
 
@@ -333,7 +374,7 @@ async function replyProfile(profileId: string) {
     .eq("id", profileId)
     .single();
   if (!data) {
-    await sendTelegramMessage("No profile on file yet.");
+    await reply(profileId, "No profile on file yet.");
     return;
   }
   const lines: string[] = [];
@@ -357,7 +398,7 @@ async function replyProfile(profileId: string) {
   } else {
     lines.push("Goal: (not set — use /goal <text> to add one)");
   }
-  await sendTelegramMessage(lines.join("\n"));
+  await reply(profileId, lines.join("\n"));
 }
 
 async function replyGoal(profileId: string) {
@@ -368,12 +409,11 @@ async function replyGoal(profileId: string) {
     .eq("id", profileId)
     .single();
   if (!data?.goal_text) {
-    await sendTelegramMessage(
-      "No goal set. Use /goal <text> to add one — e.g. /goal travel without my back being the limit",
+    await reply(profileId, "No goal set. Use /goal <text> to add one — e.g. /goal travel without my back being the limit",
     );
     return;
   }
-  await sendTelegramMessage(`Your goal:\n\n${data.goal_text}`);
+  await reply(profileId, `Your goal:\n\n${data.goal_text}`);
 }
 
 async function setGoal(profileId: string, text: string) {
@@ -383,17 +423,17 @@ async function setGoal(profileId: string, text: string) {
     .update({ goal_text: text, updated_at: new Date().toISOString() })
     .eq("id", profileId);
   if (error) {
-    await sendTelegramMessage(`Couldn't save goal: ${error.message}`);
+    logFailure("telegram/goal", error);
+    await reply(profileId, publicError("save"));
     return;
   }
-  await sendTelegramMessage(
-    `Saved. Coach will reference this on the next run:\n\n${text}`,
+  await reply(profileId, `Saved. Coach will reference this on the next run:\n\n${text}`,
   );
 }
 
 async function setQuietHours(profileId: string, hours: number) {
   if (!Number.isFinite(hours) || hours <= 0 || hours > 168) {
-    await sendTelegramMessage("Try /quiet N where N is 1–168 hours.");
+    await reply(profileId, "Try /quiet N where N is 1–168 hours.");
     return;
   }
   // Implementation: insert a `quiet_until` row into agent_messages from
@@ -408,7 +448,7 @@ async function setQuietHours(profileId: string, hours: number) {
       quiet_until: new Date(Date.now() + hours * 3600 * 1000).toISOString(),
     },
   });
-  await sendTelegramMessage(`Got it — Companion will stay quiet for ${hours}h.`);
+  await reply(profileId, `Got it — Companion will stay quiet for ${hours}h.`);
 }
 
 function truncate(s: string, max: number) {

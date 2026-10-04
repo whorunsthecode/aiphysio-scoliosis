@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logFailure, publicError, statusOf } from "@/lib/errors";
 import { analyzeImageJSON, GeminiError } from "@/lib/gemini";
 import {
   XRAY_SYSTEM_PROMPT,
@@ -33,13 +34,13 @@ export async function POST(req: Request) {
   if (file) {
     if (file.size > MAX_FILE_BYTES) {
       return NextResponse.json(
-        { error: "File too large. Max 10 MB." },
+        { ok: false, error: publicError("xray", 413) },
         { status: 413 },
       );
     }
     if (!ALLOWED_MIME.includes(file.type)) {
       return NextResponse.json(
-        { error: `Unsupported file type: ${file.type}` },
+        { ok: false, error: publicError("xray", 415) },
         { status: 415 },
       );
     }
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
     const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
     if (!match) {
       return NextResponse.json(
-        { error: "Invalid dataUrl format" },
+        { ok: false, error: publicError("xray", 400) },
         { status: 400 },
       );
     }
@@ -58,20 +59,20 @@ export async function POST(req: Request) {
     imageBase64 = match[2];
     if (!ALLOWED_MIME.includes(mimeType)) {
       return NextResponse.json(
-        { error: `Unsupported mime type: ${mimeType}` },
+        { ok: false, error: publicError("xray", 415) },
         { status: 415 },
       );
     }
     const approxBytes = (imageBase64.length * 3) / 4;
     if (approxBytes > MAX_FILE_BYTES) {
       return NextResponse.json(
-        { error: "Image too large. Max 10 MB." },
+        { ok: false, error: publicError("xray", 413) },
         { status: 413 },
       );
     }
   } else {
     return NextResponse.json(
-      { error: "No file or dataUrl provided" },
+      { ok: false, error: publicError("xray", 400) },
       { status: 400 },
     );
   }
@@ -91,20 +92,18 @@ export async function POST(req: Request) {
     });
     return NextResponse.json({ ok: true, analysis });
   } catch (e) {
-    if (e instanceof GeminiError) {
-      const status = e.status === 503 ? 503 : 502;
-      return NextResponse.json(
-        {
-          ok: false,
-          error: e.message,
-          configured: e.status !== 503,
-        },
-        { status },
-      );
-    }
+    // Details to the log; a plain sentence to the person. A failed read
+    // writes nothing, so they can retry or skip.
+    logFailure("api/xray", e);
+    const provider = statusOf(e);
+    const status = provider === 503 || provider === 429 || provider === 504 ? provider : 502;
     return NextResponse.json(
-      { ok: false, error: e instanceof Error ? e.message : "Unknown error" },
-      { status: 500 },
+      {
+        ok: false,
+        error: publicError("xray", status),
+        configured: !(e instanceof GeminiError && e.status === 503),
+      },
+      { status },
     );
   }
 }

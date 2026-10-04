@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { NETWORK_ERROR, publicError } from "@/lib/errors";
 import {
   AlertCircle,
   CheckCircle2,
@@ -105,7 +106,7 @@ export function XrayStep({
         const msg =
           "error" in json
             ? json.error
-            : `Parser returned status ${res.status}`;
+            : publicError("xray", res.status);
         update({
           xray: {
             ...state.xray,
@@ -124,12 +125,12 @@ export function XrayStep({
           parseError: null,
         },
       });
-    } catch (e) {
+    } catch {
       update({
         xray: {
           ...state.xray,
           parseStatus: "error",
-          parseError: e instanceof Error ? e.message : "Network error",
+          parseError: NETWORK_ERROR,
         },
       });
     }

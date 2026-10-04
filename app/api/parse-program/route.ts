@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logFailure, publicError, statusOf } from "@/lib/errors";
 import { chatJSON, GroqError } from "@/lib/groq";
 import {
   buildParseProgramPrompts,
@@ -16,19 +17,19 @@ export async function POST(req: Request) {
   try {
     body = (await req.json()) as { raw_text?: string };
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    return NextResponse.json({ ok: false, error: publicError("parse", 400) }, { status: 400 });
   }
 
   const rawText = (body.raw_text ?? "").trim();
   if (!rawText) {
     return NextResponse.json(
-      { error: "raw_text is required" },
+      { ok: false, error: publicError("parse", 400) },
       { status: 400 },
     );
   }
   if (rawText.length > MAX_TEXT_LEN) {
     return NextResponse.json(
-      { error: `raw_text too long. Max ${MAX_TEXT_LEN} characters.` },
+      { ok: false, error: `That's longer than I can read in one go. Paste up to ${MAX_TEXT_LEN.toLocaleString("en")} characters.` },
       { status: 413 },
     );
   }
@@ -45,20 +46,16 @@ export async function POST(req: Request) {
     });
     return NextResponse.json({ ok: true, parsed });
   } catch (e) {
-    if (e instanceof GroqError) {
-      const status = e.status === 503 ? 503 : 502;
-      return NextResponse.json(
-        {
-          ok: false,
-          error: e.message,
-          configured: e.status !== 503,
-        },
-        { status },
-      );
-    }
+    logFailure("api/parse-program", e);
+    const provider = statusOf(e);
+    const status = provider === 503 || provider === 429 || provider === 504 ? provider : 502;
     return NextResponse.json(
-      { ok: false, error: e instanceof Error ? e.message : "Unknown error" },
-      { status: 500 },
+      {
+        ok: false,
+        error: publicError("parse", status),
+        configured: !(e instanceof GroqError && e.status === 503),
+      },
+      { status },
     );
   }
 }

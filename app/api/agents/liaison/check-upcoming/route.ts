@@ -51,7 +51,12 @@ export async function GET(req: Request) {
     appts.map((a) =>
       fetch(`${baseUrl}/api/agents/liaison`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        // The Liaison POST requires the owner or the cron secret; this is
+        // the cron acting, so it forwards the secret.
+        headers: {
+          "Content-Type": "application/json",
+          ...(process.env.CRON_SECRET ? { Authorization: `Bearer ${process.env.CRON_SECRET}` } : {}),
+        },
         body: JSON.stringify({ appointmentId: a.id }),
       }).then((r) => r.ok),
     ),
