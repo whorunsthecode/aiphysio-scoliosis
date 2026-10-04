@@ -2,6 +2,7 @@
 // service-role key — never import this from the browser.
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { cronDecision, isProductionRuntime } from "./auth";
 
 let cached: SupabaseClient | null = null;
 
@@ -69,14 +70,10 @@ export async function getCurrentProfileId(): Promise<string | null> {
   return data[0].id;
 }
 
-// Cron protection: Vercel sets `CRON_SECRET` and includes it as a Bearer
-// token. Production rejects calls without it. Local dev bypasses if unset.
+// Cron protection: Vercel sends CRON_SECRET as a Bearer token. Without the
+// secret, production refuses rather than running unguarded; local dev
+// (NODE_ENV !== "production") still runs without one. See lib/agents/auth.ts.
 export function authorizeCron(req: Request): { ok: true } | { ok: false; status: number } {
-  const expected = process.env.CRON_SECRET;
-  if (!expected) return { ok: true }; // local dev — unguarded
-  const auth = req.headers.get("authorization");
-  if (auth !== `Bearer ${expected}`) {
-    return { ok: false, status: 401 };
-  }
-  return { ok: true };
+  const d = cronDecision(req.headers.get("authorization"), process.env.CRON_SECRET, isProductionRuntime());
+  return d.ok ? { ok: true } : { ok: false, status: d.status };
 }

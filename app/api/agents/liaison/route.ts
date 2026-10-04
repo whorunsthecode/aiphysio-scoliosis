@@ -2,6 +2,7 @@
 // /api/agents/liaison/check-upcoming cron 24h before any logged appointment.
 
 import { NextResponse } from "next/server";
+import { authorizeOwnerOrCron } from "@/lib/agents/auth";
 import {
   SUPABASE_NOT_CONFIGURED_RESPONSE,
   authorizeCron,
@@ -28,6 +29,13 @@ type LiaisonOutput = {
 };
 
 export async function POST(req: Request) {
+  // A person pressing "Run now" on /care-team: must be the signed-in owner
+  // of the agent tier's profile (or hold the cron secret). This used to
+  // skip authentication entirely.
+  const auth = await authorizeOwnerOrCron(req);
+  if (!auth.ok) {
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: auth.status });
+  }
   return runLiaison(req, true);
 }
 

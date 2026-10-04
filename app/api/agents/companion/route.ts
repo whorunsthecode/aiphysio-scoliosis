@@ -4,6 +4,7 @@
 // window from Telegram).
 
 import { NextResponse } from "next/server";
+import { authorizeOwnerOrCron } from "@/lib/agents/auth";
 import {
   SUPABASE_NOT_CONFIGURED_RESPONSE,
   authorizeCron,
@@ -45,6 +46,13 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  // A person pressing "Run now" on /care-team: must be the signed-in owner
+  // of the agent tier's profile (or hold the cron secret). This used to
+  // skip authentication entirely.
+  const auth = await authorizeOwnerOrCron(req);
+  if (!auth.ok) {
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: auth.status });
+  }
   // Event triggers from the v2 app: ?trigger=session_complete or =high_pain.
   return runCompanion(req, true);
 }

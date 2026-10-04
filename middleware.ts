@@ -58,8 +58,11 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Everything except static assets, images, and the cron/agent endpoints,
-    // which authenticate with CRON_SECRET rather than a user session.
+    // Everything except static assets, images, and the cron/agent/telegram
+    // endpoints. Those authenticate inside the route instead (see
+    // lib/agents/auth.ts): cron with CRON_SECRET, the "Run now" POSTs with
+    // the owner's session, the webhook with Telegram's secret token. Cron
+    // calls carry no session, so a redirect here would break them.
     "/((?!_next/static|_next/image|favicon.ico|api/cron|api/agents|api/telegram|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?)$).*)",
   ],
 };

@@ -2,6 +2,7 @@
 // renders, in one round-trip. Service-role read only; never exposes the key.
 
 import { NextResponse } from "next/server";
+import { authorizeOwnerOrCron } from "@/lib/agents/auth";
 import {
   SUPABASE_NOT_CONFIGURED_RESPONSE,
   getCurrentProfileId,
@@ -12,7 +13,13 @@ import {
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-export async function GET() {
+export async function GET(req: Request) {
+  // Everything the agents hold about the user, read with the service role.
+  // Signed-in is not enough: it must be the profile's owner.
+  const auth = await authorizeOwnerOrCron(req);
+  if (!auth.ok) {
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: auth.status });
+  }
   if (!isSupabaseConfigured()) {
     return NextResponse.json(SUPABASE_NOT_CONFIGURED_RESPONSE, { status: 503 });
   }
