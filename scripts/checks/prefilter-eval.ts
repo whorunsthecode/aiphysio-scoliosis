@@ -429,3 +429,6 @@ async function main() {
 }
 
 void main();
+
+// A module, not a global script: other check files also declare main().
+export {};
