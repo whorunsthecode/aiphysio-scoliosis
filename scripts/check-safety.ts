@@ -16,7 +16,13 @@ import {
 import { selectProgram } from "@/lib/exercises/selectProgram";
 import { initialOnboardingState } from "@/lib/onboarding/initialState";
 import type { OnboardingState } from "@/lib/onboarding/types";
-import { prefilterRedFlags, safetyReplyFor } from "@/lib/safety/prefilter";
+import {
+  SEVERE_PAIN_SCORE,
+  painScore,
+  prefilterRedFlags,
+  safetyReplyFor,
+  safetyReplyKind,
+} from "@/lib/safety/prefilter";
 import { atrSideFrom, reconcileConvexity } from "@/lib/exercises/convexity";
 import { enforceLaterality, type XrayAnalysis } from "@/lib/prompts/xray";
 
@@ -367,6 +373,55 @@ console.log("\nchat pre-filter\n");
     "emergency hits sort first",
     prefilterRedFlags("tingling feet and my bladder's gone weird")[0]?.emergency === true,
     "ordering broken",
+  );
+
+  // Chest pain and self-harm get their own replies, which point to
+  // emergency help and nothing else.
+  const chestReply = safetyReplyFor(prefilterRedFlags("my chest hurts and it's spreading to my arm"));
+  const selfHarmReply = safetyReplyFor(prefilterRedFlags("i want to kill myself"));
+  for (const [name, reply] of [
+    ["chest pain", chestReply],
+    ["self-harm", selfHarmReply],
+  ] as const) {
+    check(
+      `the ${name} reply names 999 and the emergency department`,
+      /\b999\b/.test(reply) && /emergency department/i.test(reply),
+      reply,
+    );
+    check(
+      `the ${name} reply suggests no exercise`,
+      !EXERCISE_WORDS.test(reply),
+      reply,
+    );
+  }
+  check(
+    "self-harm outranks every other reply when both fire",
+    safetyReplyKind(prefilterRedFlags("chest pain and i want to die")) === "self_harm",
+    safetyReplyKind(prefilterRedFlags("chest pain and i want to die")),
+  );
+  check(
+    "self-harm language is answered even when negated",
+    safetyReplyKind(prefilterRedFlags("i'm not suicidal, just tired")) === "self_harm",
+    "a mention of suicide must always get the support reply",
+  );
+
+  // Pain scores are parsed, not pattern-matched on any digit.
+  const scores: [string, number | null][] = [
+    ["pain 2/10", 2],
+    ["pain is 9/10 today", 9],
+    ["my back pain is at a 9", 9],
+    ["back pain was fine, did 10 reps", null],
+    ["pain 2/10 yesterday, 9/10 today", 9],
+    ["held it for 8 sets of 10 seconds", null],
+  ];
+  for (const [text, want] of scores) {
+    check(`pain score of "${text}" is ${want}`, painScore(text) === want, `got ${painScore(text)}`);
+  }
+  check(
+    "a score below the severe threshold does not fire",
+    !prefilterRedFlags(`pain ${SEVERE_PAIN_SCORE - 1}/10`).some((h) => h.ruleId === "severe_or_new_intense_pain") &&
+      prefilterRedFlags(`pain ${SEVERE_PAIN_SCORE}/10`).some((h) => h.ruleId === "severe_or_new_intense_pain"),
+    `threshold is ${SEVERE_PAIN_SCORE}`,
   );
 }
 
