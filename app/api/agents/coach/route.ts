@@ -17,21 +17,16 @@ import {
 import { COACH_SYSTEM_PROMPT } from "@/lib/agents/prompts";
 import { chatJSON } from "@/lib/groq";
 import { deliver } from "@/lib/messaging/deliver";
-import { getExerciseById } from "@/lib/exercises/library";
-import {
-  deriveCurvePattern,
-  deriveRegionalSides,
-} from "@/lib/exercises/profile";
+import { enforceCoachProgram, screenCoachMessage } from "@/lib/agents/coachSafety";
+import type { ProfileLike } from "@/lib/exercises/profile";
 import type { OnboardingState } from "@/lib/onboarding/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 type CoachOutput = {
-  program: Record<
-    string,
-    { exercise_id: string; sets?: number; reps?: number; side_cue?: string }[]
-  >;
+  // Untrusted: shape and content are checked by enforceCoachProgram.
+  program: unknown;
   telegram_message: string;
   reasoning: string;
   handoff_to_companion: string;
@@ -85,11 +80,20 @@ async function runCoach(req: Request, manual: boolean) {
   const supabase = getServiceSupabase();
   const weekStart = nextMondayUTC();
 
-  // CRITICAL: Asymmetric side cues are clinical content. We do NOT trust the
-  // LLM to derive them — wrong-side strengthening actively worsens curves.
-  // Coach picks exercises + reps; we attach the right side cue from the
-  // library based on the user's actual curve pattern.
-  const safeProgram = enforceLibrarySideCues(output.program, context.profile);
+  // The model proposes; this decides. Non-library ids are dropped, every
+  // side cue is rewritten from the library for the user's actual curve
+  // pattern (blank when the side is unknown, and side-dependent exercises
+  // withheld), and the message is screened before anyone reads it. See
+  // lib/agents/coachSafety.ts.
+  const enforced = enforceCoachProgram(output.program, profileLike(context.profile));
+  const safeProgram = enforced.program;
+  const screened = screenCoachMessage(output.telegram_message, enforced);
+  if (enforced.dropped.length || screened.usedFallback) {
+    console.warn("[coach] enforcement", {
+      dropped: enforced.dropped,
+      messageScreen: screened.reasons,
+    });
+  }
 
   // Deactivate previously-active programs.
   await supabase
@@ -112,23 +116,17 @@ async function runCoach(req: Request, manual: boolean) {
     { onConflict: "profile_id,week_start" },
   );
 
-  // Telegram + Companion handoff + message-processing in parallel.
-  // Coach formats its messages with HTML tags (b, i, pre) per the prompt
-  // contract so Telegram renders the schedule as a monospace grid.
+  // deliver() writes the inbox row. A second insert here used to store the
+  // model's raw, unscreened message next to it.
   const sendResult = await deliver({
     supabase,
     profileId,
     agent: "coach",
-    text: output.telegram_message,
+    text: screened.message,
     kind: "program",
   });
 
   await Promise.all([
-    supabase.from("notifications").insert({
-      profile_id: profileId,
-      sent_by_agent: "coach",
-      message_text: output.telegram_message,
-    }),
     supabase.from("agent_messages").insert({
       profile_id: profileId,
       from_agent: "coach",
@@ -147,84 +145,27 @@ async function runCoach(req: Request, manual: boolean) {
     week_start: weekStart,
     delivered_in_app: sendResult.inApp,
     mirrored_to_telegram: sendResult.mirrored,
+    dropped: enforced.dropped,
+    message_screen: screened.reasons,
   });
 }
 
-// Replace the LLM's side_cue with the library-encoded asymmetric cue for
-// the user's actual curve pattern. This guarantees correctness on
-// asymmetric exercises (side plank, hip bridge, bird dog) regardless of
-// what the LLM generated.
-function enforceLibrarySideCues(
-  program: CoachOutput["program"],
-  profileRow: Record<string, unknown> | null,
-): CoachOutput["program"] {
-  if (!profileRow) return program;
-  // Adapt the Supabase profile row into the OnboardingState-shaped object
-  // deriveCurvePattern + deriveRegionalSides expect.
-  const profile = {
-    curveType: (profileRow.curve_type as OnboardingState["curveType"]) ?? null,
-    primaryCurveApex: (profileRow.primary_curve_apex as OnboardingState["primaryCurveApex"]) ?? null,
-    primaryLeanSide: (profileRow.primary_curve_convex_side as OnboardingState["primaryLeanSide"]) ?? null,
-    secondaryCurveApex: (profileRow.secondary_curve_apex as OnboardingState["secondaryCurveApex"]) ?? null,
-    secondaryLeanSide: (profileRow.secondary_curve_convex_side as OnboardingState["secondaryLeanSide"]) ?? null,
+// The Supabase profile row, in the shape the curve helpers expect.
+function profileLike(row: Record<string, unknown> | null): ProfileLike | null {
+  if (!row) return null;
+  return {
+    curveType: (row.curve_type as OnboardingState["curveType"]) ?? null,
+    primaryCurveApex: (row.primary_curve_apex as OnboardingState["primaryCurveApex"]) ?? null,
+    primaryLeanSide: (row.primary_curve_convex_side as OnboardingState["primaryLeanSide"]) ?? null,
+    secondaryCurveApex: (row.secondary_curve_apex as OnboardingState["secondaryCurveApex"]) ?? null,
+    secondaryLeanSide: (row.secondary_curve_convex_side as OnboardingState["secondaryLeanSide"]) ?? null,
     segmentShifts: {
-      cervical: (profileRow.segment_i_shift as OnboardingState["segmentShifts"]["cervical"]) ?? null,
-      upper_thoracic: (profileRow.segment_ii_shift as OnboardingState["segmentShifts"]["upper_thoracic"]) ?? null,
-      lower_thoracic: (profileRow.segment_iii_shift as OnboardingState["segmentShifts"]["lower_thoracic"]) ?? null,
-      lumbar: (profileRow.segment_iv_shift as OnboardingState["segmentShifts"]["lumbar"]) ?? null,
+      cervical: (row.segment_i_shift as OnboardingState["segmentShifts"]["cervical"]) ?? null,
+      upper_thoracic: (row.segment_ii_shift as OnboardingState["segmentShifts"]["upper_thoracic"]) ?? null,
+      lower_thoracic: (row.segment_iii_shift as OnboardingState["segmentShifts"]["lower_thoracic"]) ?? null,
+      lumbar: (row.segment_iv_shift as OnboardingState["segmentShifts"]["lumbar"]) ?? null,
     },
-  } as Pick<
-    OnboardingState,
-    | "curveType"
-    | "primaryCurveApex"
-    | "primaryLeanSide"
-    | "secondaryCurveApex"
-    | "secondaryLeanSide"
-    | "segmentShifts"
-  >;
-
-  const pattern = deriveCurvePattern(profile);
-  const sides = deriveRegionalSides(profile);
-
-  const out: CoachOutput["program"] = {};
-  for (const [day, items] of Object.entries(program)) {
-    out[day] = items.map((it) => {
-      const lib = getExerciseById(it.exercise_id);
-      // Library asymmetric_cues for this exact pattern wins. Falls back to
-      // the "any" cue for symmetric exercises.
-      const libCue =
-        lib?.asymmetric_cues[pattern] ?? lib?.asymmetric_cues["any"] ?? null;
-
-      // Special-case the two enforced exercises for additional safety.
-      let safeCue: string | null = libCue;
-      if (
-        it.exercise_id === "side_plank_convex_thoracic_side_down" &&
-        sides.thoracicConvex
-      ) {
-        safeCue = `${sides.thoracicConvex} side down`;
-      }
-      if (
-        it.exercise_id === "hip_bridge_pelvic_press_down" &&
-        sides.lumbarConvex
-      ) {
-        safeCue = `Press the ${sides.lumbarConvex} hip down on each lift`;
-      }
-      if (
-        it.exercise_id === "bird_dog_asymmetric_hold" &&
-        sides.thoracicConcave
-      ) {
-        const armSide = sides.thoracicConcave;
-        const legSide = armSide === "left" ? "right" : "left";
-        safeCue = `Longer hold on the ${armSide} arm + ${legSide} leg`;
-      }
-
-      return {
-        ...it,
-        side_cue: safeCue ?? it.side_cue ?? undefined,
-      };
-    });
-  }
-  return out;
+  };
 }
 
 function nextMondayUTC(): string {
