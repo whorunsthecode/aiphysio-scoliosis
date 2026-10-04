@@ -103,6 +103,12 @@ export default function PrivacyPage() {
           <Heading level={2}>What&apos;s held, and where</Heading>
           <ul className="flex list-disc flex-col gap-2 pl-5 text-[15px] leading-relaxed text-ink-secondary">
             <li>
+              Messages you send to Balance&apos;s chat go to the model provider
+              as you typed them, alongside your curve pattern and recent pain
+              scores. Your name and your goal are not sent with them, but
+              anything you write in the message itself is.
+            </li>
+            <li>
               Your profile, sessions, pain logs and any uploads are stored in a
               database where the access rules mean only your account can read
               them.

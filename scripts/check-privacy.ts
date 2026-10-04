@@ -15,6 +15,8 @@ import {
   sanitiseForLocalStorage,
 } from "@/lib/privacy/data";
 import { serializeContext } from "@/lib/agents/context";
+import { buildChatContext } from "@/lib/agents/conversation";
+import { readFileSync } from "node:fs";
 import { initialOnboardingState } from "@/lib/onboarding/initialState";
 import type { OnboardingState } from "@/lib/onboarding/types";
 
@@ -204,6 +206,54 @@ console.log("\nagent context leaving for a model provider\n");
     "adherence figures survive",
     json.includes("sessionsLast7Days") || json.includes("sessions_last_7"),
     "adherence is what the agents reason about",
+  );
+}
+
+console.log("\nchat context\n");
+{
+  // The chat handler built its own compact context and sent it unredacted:
+  // name and free-text goal went to the model provider on every message,
+  // while the privacy page said they never did.
+  const ctx = {
+    profile: {
+      id: "p-1",
+      name: "Karmen",
+      goal_text: "travel without my back being the limit",
+      curve_type: "S",
+      primary_curve_apex: "lower_thoracic",
+      primary_curve_convex_side: "right",
+      secondary_curve_apex: "lumbar",
+      secondary_curve_convex_side: "left",
+    },
+    recentSessions: [
+      {
+        started_at: "2026-10-01T08:00:00Z",
+        pain_check: [{ location: "lumbar", intensity: 4, type: "ache" }],
+        exercises_completed: [{ exerciseId: "cat_cow", setsCompleted: 1 }],
+      },
+    ],
+    correlations: [],
+    adherence: { sessionsLast7Days: 3, sessionsLast30Days: 9, activeDaysLast7: 3, averageExercisesPerSession: 4 },
+  };
+  const json = JSON.stringify(buildChatContext(ctx as never));
+  check("chat: the user's name does not reach the model", !json.includes("Karmen"), json.slice(0, 200));
+  check("chat: the free-text goal does not reach the model", !json.includes("travel without"), json.slice(0, 200));
+  check("chat: no internal ids", !json.includes("p-1"), json.slice(0, 200));
+  check(
+    "chat: curve pattern, pain and adherence still reach the model",
+    json.includes("lower_thoracic") && json.includes("lumbar") && json.includes('"intensity":4') && json.includes("sessions_last_7d"),
+    json.slice(0, 300),
+  );
+  const src = readFileSync("lib/agents/conversation.ts", "utf8");
+  check(
+    "chat: the model is told to write {name}, not to use a name it no longer has",
+    src.includes("{name}") && !/Use her name occasionally/.test(src),
+    "the prompt must match what the model is given",
+  );
+  check(
+    "chat: the reply has {name} filled in before it is returned",
+    /personalise\(/.test(src),
+    "a raw {name} would otherwise reach Telegram",
   );
 }
 
