@@ -1,9 +1,13 @@
-# Balance — Clinical Audit (O&T + PSSE physiotherapy lenses)
+# Balance — Clinical Audit (model-generated; O&T and PSSE physiotherapy personas)
 
-_Generated 2026-09-05. Five independent clinical auditors reviewed the actual rules in the codebase; every finding was then put to two independent refuters (a guidelines/literature reviewer and a practising scoliosis clinician) and kept only if **both** failed to refute it. 40 findings raised → **35 confirmed**, 5 refuted. Four of five "100x" proposals completed before the run was stopped to conserve tokens; the judging, accuracy-roadmap, open-source and synthesis stages did **not** run. Raw outputs are in `docs/audit-data/`._
+> **Every reviewer in this document is a language model, not a person.** The auditors, the two refuters per finding and the two judges were model personas (Claude, prompted to play each role) run in an automated multi-agent workflow. No human clinician — surgeon, physiotherapist or otherwise — reviewed these findings or the codebase. Role names below ("spine surgeon", "practising scoliosis clinician", "SOSORT-affiliated clinician") describe the prompt, not a credential. Phrases such as "what I recall" are the model speaking. Treat the findings as a structured self-review to check with a qualified clinician, not as clinical review.
+
+_Generated 2026-09-05 by model personas. Five model "auditor" personas reviewed the actual rules in the codebase; every finding was then put to two model "refuter" personas (prompted as a guidelines/literature reviewer and as a practising scoliosis clinician) and kept only if **both** failed to refute it. 40 findings raised → **35 confirmed**, 5 refuted. Four of five "100x" proposals completed before the run was stopped to conserve tokens; the judging stage ran later (see "The 100x feature — judged"), and the accuracy-roadmap, open-source and synthesis stages did **not** run. Raw outputs are in `docs/audit-data/`._
 
 
 ## Auditor headlines
+
+_Each heading is the role a model persona was prompted to play._
 
 **PSSE-certified physiotherapist.** The engine's convex/concave derivation is correct, but the library then applies it inconsistently: the sitting waist fold is cued INTO the curve for thoracic patients, child's pose has an inverted rationale, "frog in the pond" is an unsourced single-patient exercise never mirrored for left curves, and side-plank-wrong-side is called an ABSOLUTE contraindication on the strength of one uncontrolled yoga case series while the product's own outcome measure requires bilateral side bridges. Nothing in the library is actually a Schroth or SEAS exercise; the PSSE core (pelvic corrections, elongation, 3D autocorrection, stabilisation, ADL integration) is absent, so the "Schroth" labelling is exposure, not substance.
 
@@ -18,7 +22,7 @@ _Generated 2026-09-05. Five independent clinical auditors reviewed the actual ru
 
 ## What is not accurate — confirmed findings
 
-_Severity shown is the stricter of the two refuters' adjusted severities. Confidence is the original auditor's._
+_Severity shown is the stricter of the two refuter personas' adjusted severities. Confidence is the original auditor persona's. All are model outputs._
 
 
 ### Critical — could harm a patient or is flatly wrong
@@ -737,7 +741,7 @@ The workflow was stopped after four proposals to conserve tokens. Not produced: 
 
 ## The 100x feature — judged
 
-_Two judges (a medtech VC who also assessed solo-founder buildability; a SOSORT-affiliated clinician) scored nine proposals independently. **Both chose the same winner.**_
+_Two model judge personas (prompted as a medtech VC who also assessed solo-founder buildability, and as a SOSORT-affiliated clinician) scored nine proposals independently. **Both chose the same winner.** Neither is a person._
 
 ### Winner: The Signed Prescription Loop: physio-authored programme in, verified-dose ledger out
 
