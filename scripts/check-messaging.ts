@@ -6,13 +6,16 @@
 // whatever a caller asks for. Enforced in deliver() rather than at the call
 // sites, because a call site is exactly where someone forgets.
 
+import { readFileSync } from "node:fs";
 import {
+  SAFETY_POINTER,
   deliver,
   mayMirror,
   mirrorPointer,
   personalise,
   type MessageKind,
 } from "@/lib/messaging/deliver";
+import { kindForChatReply, kindForObservations } from "@/lib/messaging/replyKind";
 
 let failures = 0;
 function check(name: string, ok: boolean, detail: string) {
@@ -186,6 +189,126 @@ console.log("\nenforcement\n");
     "the placeholder is substituted before the message is stored",
     sb5.inserts.some((i) => i.message_text === "Nice work this week, Karmen."),
     `got ${JSON.stringify(sb5.inserts.map((i) => i.message_text))}`,
+  );
+
+  // The mirror's real outcome is reported. sendTelegramMessage returns
+  // { ok: false } rather than throwing, and that used to read as success.
+  const sent: string[] = [];
+  const failingSend = async (text: string) => {
+    sent.push(text);
+    return { ok: false as const, error: "Telegram 502: Bad Gateway" };
+  };
+  const failed = await deliver({
+    supabase: fakeSupabase(optedIn),
+    profileId: "p1",
+    agent: "companion",
+    text: "How's the back today?",
+    kind: "nudge",
+    send: failingSend,
+  });
+  check(
+    "a Telegram API failure is reported as not mirrored",
+    failed.inApp && !failed.mirrored && failed.mirrorFailed === true,
+    `got ${JSON.stringify(failed)}`,
+  );
+  const thrown = await deliver({
+    supabase: fakeSupabase(optedIn),
+    profileId: "p1",
+    agent: "companion",
+    text: "How's the back today?",
+    kind: "nudge",
+    send: async () => {
+      throw new Error("network down");
+    },
+  });
+  check(
+    "a thrown send is reported as not mirrored",
+    thrown.inApp && !thrown.mirrored && thrown.mirrorFailed === true,
+    `got ${JSON.stringify(thrown)}`,
+  );
+  const okSend = await deliver({
+    supabase: fakeSupabase(optedIn),
+    profileId: "p1",
+    agent: "companion",
+    text: "How's the back today?",
+    kind: "nudge",
+    send: async () => ({ ok: true as const, messageId: 1 }),
+  });
+  check("a successful send is reported as mirrored", okSend.mirrored && !okSend.mirrorFailed, JSON.stringify(okSend));
+
+  // A safety escalation's content never leaves the app. Someone who wrote
+  // to the bot about chest pain still gets a fixed pointer in Telegram, so
+  // the channel they are using is not silent.
+  const safetySent: string[] = [];
+  const sbSafety = fakeSupabase(optedIn);
+  const safety = await deliver({
+    supabase: sbSafety,
+    profileId: "p1",
+    agent: "companion",
+    text: "Chest pain needs to be checked straight away. Call 999 now.",
+    kind: "safety",
+    send: async (text: string) => {
+      safetySent.push(text);
+      return { ok: true as const, messageId: 2 };
+    },
+  });
+  check(
+    "a safety escalation is not mirrored, even when opted in",
+    !safety.mirrored && safety.mirrorSuppressedBecause === "kind_never_mirrored",
+    JSON.stringify(safety),
+  );
+  check(
+    "…only the fixed pointer goes to Telegram",
+    safetySent.length === 1 && safetySent[0] === SAFETY_POINTER && safety.pointerSent === true,
+    JSON.stringify(safetySent),
+  );
+  check(
+    "…and the pointer carries nothing about the user",
+    !/\b(pain|chest|curve|bladder|numb|numbness|scoliosis|kill|harm|suicid\w*)\b/i.test(SAFETY_POINTER),
+    SAFETY_POINTER,
+  );
+  check(
+    "…while the inbox keeps the full reply",
+    sbSafety.inserts.some((i) => i.kind === "safety" && /Chest pain/.test(String(i.message_text))),
+    JSON.stringify(sbSafety.inserts),
+  );
+  const notOptedSafety: string[] = [];
+  await deliver({
+    supabase: fakeSupabase({ telegram_opt_in: false, telegram_chat_id: "12345" }),
+    profileId: "p1",
+    agent: "companion",
+    text: "Chest pain needs to be checked straight away.",
+    kind: "safety",
+    send: async (text: string) => {
+      notOptedSafety.push(text);
+      return { ok: true as const, messageId: 3 };
+    },
+  });
+  check("no pointer is sent to a profile that has not opted in", notOptedSafety.length === 0, JSON.stringify(notOptedSafety));
+
+  // Which kind each webhook reply is delivered as.
+  check(
+    "a chat reply that flagged a safety concern is delivered as a safety escalation",
+    kindForChatReply([{ name: "log_pain" }, { name: "flag_safety" }]) === "safety" &&
+      kindForChatReply([{ name: "log_pain" }]) === "message",
+    "the fixed red-flag reply must never be mirrored",
+  );
+  check(
+    "an observations list containing a safety flag is delivered as a safety escalation",
+    kindForObservations([{ observation_text: "SAFETY FLAG (prefilter:chest_pain): chest pain" }]) === "safety" &&
+      kindForObservations([{ observation_text: "Adherence dipped midweek", severity: "info" }]) === "message" &&
+      kindForObservations([{ observation_text: "x", severity: "concern" }]) === "safety",
+    "SAFETY FLAG rows were being sent straight to Telegram",
+  );
+
+  // The webhook may only talk to Telegram directly when there is no profile
+  // to deliver to. Everything else goes through deliver().
+  const webhook = readFileSync("app/api/telegram/webhook/route.ts", "utf8");
+  const direct = webhook.split("\n").filter((l) => /sendTelegramMessage\(/.test(l));
+  check(
+    "the webhook sends nothing to Telegram except through deliver() or the no-profile notice",
+    direct.length === 1 && /function notifyUnlinked|notifyUnlinked/.test(webhook),
+    `${direct.length} direct call(s):\n${direct.join("\n")}`,
   );
 
   check(
