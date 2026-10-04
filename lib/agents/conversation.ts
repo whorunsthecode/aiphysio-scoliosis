@@ -264,15 +264,23 @@ export async function handleConversation(
       { role: "user", content: userMessage },
       ...messages.slice(-1 - first.tool_calls.length),
     ];
-    const second = await chatWithTools({
-      messages: lightSecondPassMessages,
-      temperature: 0.5,
-      maxTokens: 250,
-    });
+    // The tools have already run, so a failed second call must not turn
+    // into "something went wrong": what was logged is acknowledged instead.
+    let secondText: string | null = null;
+    try {
+      const second = await chatWithTools({
+        messages: lightSecondPassMessages,
+        temperature: 0.5,
+        maxTokens: 250,
+      });
+      secondText = second.content?.trim() || null;
+    } catch (e) {
+      console.warn("[chat] second pass failed; replying with the acknowledgement", e);
+    }
 
     return {
       ok: true,
-      reply: second.content?.trim() || acknowledgementFallback(toolsCalled),
+      reply: secondText || acknowledgementFallback(toolsCalled),
       toolsCalled,
     };
   }

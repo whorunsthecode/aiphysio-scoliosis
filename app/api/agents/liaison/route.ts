@@ -110,6 +110,8 @@ async function runLiaison(req: Request, manual: boolean) {
       user: JSON.stringify(userPayload),
       temperature: 0.2,
       maxTokens: 3000,
+      // Leaves time for the PDF call and writes inside the 30s limit.
+      timeoutMs: 15_000,
     });
   } catch (e) {
     return NextResponse.json(
