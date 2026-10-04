@@ -10,7 +10,9 @@
 
 import { chatWithTools, type GroqMessage } from "@/lib/groq";
 import { TOOL_DEFS, executeTool } from "@/lib/agents/tools";
-import { buildContext, serializeContext } from "@/lib/agents/context";
+import { buildContext, serializeContext, type UserContext } from "@/lib/agents/context";
+import { redactForThirdParty } from "@/lib/privacy/data";
+import { personalise } from "@/lib/messaging/deliver";
 import { EXERCISE_LIBRARY } from "@/lib/exercises/library";
 import { prefilterRedFlags, safetyReplyFor } from "@/lib/safety/prefilter";
 
@@ -84,7 +86,7 @@ TONE — read before composing the reply
 - Then "reply when done" — literally those words or close.
 - Brief. Single line is often enough. No headers, no bullets, no lists. No exclamation marks for enthusiasm.
 - Never say "must", "should", "have to", "important", "critical". Replace with "try", "see if", "want to".
-- Use her name occasionally, not every message.
+- You are not given her name; it is withheld on purpose. Where you would use it, write {name} exactly like that, including the braces, and the app fills it in. Occasionally, not every message. Never guess a name.
 - If she sends "ok" or "thanks" or "done", reply "👍" or "noted" and STOP. Don't fill silence.
 
 ────────────────────────────────────────────
@@ -121,9 +123,71 @@ export type ConversationResult = {
   toolsCalled: { name: string; args: string; result: { ok: boolean; summary?: string; error?: string } }[];
 };
 
+// Compact context for chat: everything the conversation handler needs and
+// nothing more. The full serialized context is for Coach and Liaison.
+//
+// It is redacted like every other agent context. It used to carry the
+// user's name and free-text goal to the model provider on every message,
+// while the privacy page said identifying details never leave. The model
+// writes {name}; the reply is personalised before it is returned.
+//
+// Only this object is redacted, not the exercise pool: redactForThirdParty
+// drops every "name" key, which would also strip exercise names.
+export function buildChatContext(
+  context: Pick<UserContext, "profile" | "recentSessions" | "correlations" | "adherence">,
+) {
+  const recentPain: { location: string; intensity: number; type?: string; when: string }[] = [];
+  const recentExercises: { exerciseId: string; when: string }[] = [];
+  for (const s of context.recentSessions.slice(0, 5)) {
+    for (const p of s.pain_check ?? []) {
+      recentPain.push({
+        location: p.location,
+        intensity: p.intensity,
+        type: p.type,
+        when: s.started_at.slice(0, 10),
+      });
+    }
+    for (const e of s.exercises_completed ?? []) {
+      recentExercises.push({
+        exerciseId: e.exerciseId,
+        when: s.started_at.slice(0, 10),
+      });
+    }
+  }
+  return redactForThirdParty({
+    curve_pattern: context.profile?.curve_type ?? null,
+    primary_apex: context.profile?.primary_curve_apex ?? null,
+    primary_lean: context.profile?.primary_curve_convex_side ?? null,
+    secondary_apex: context.profile?.secondary_curve_apex ?? null,
+    secondary_lean: context.profile?.secondary_curve_convex_side ?? null,
+    has_goal: !!context.profile?.goal_text?.trim(),
+    sessions_last_7d: context.adherence.sessionsLast7Days,
+    recent_pain_logs: recentPain.slice(0, 8),
+    recent_exercises: recentExercises.slice(0, 8),
+    top_correlations: context.correlations.slice(0, 3).map((c) => ({
+      subject: c.subject,
+      object: c.object,
+      lag_days: c.lag_days,
+      r: Number(c.correlation_strength.toFixed(2)),
+    })),
+  });
+}
+
 export async function handleConversation(
   profileId: string,
   userMessage: string,
+): Promise<ConversationResult> {
+  // The model writes {name}; the real name is filled in here, after the
+  // model call, so it never travels to the provider.
+  const seen: { name?: string | null } = {};
+  const result = await respond(profileId, userMessage, seen);
+  return { ...result, reply: personalise(result.reply, seen.name) };
+}
+
+async function respond(
+  profileId: string,
+  userMessage: string,
+  seen: { name?: string | null },
 ): Promise<ConversationResult> {
   // Deterministic safety floor. The prompt below asks the model to do this;
   // the code here makes sure of it. On a hit the model never sees the
@@ -144,46 +208,9 @@ export async function handleConversation(
   }
 
   const context = await buildContext(profileId, "companion");
+  seen.name = context.profile?.name ?? null;
 
-  // Compact context for chat — everything the conversation handler actually
-  // needs and nothing more. The full serialized context is for Coach +
-  // Liaison; chat doesn't need the cascade reasoning or 14d session list.
-  const recentPain: { location: string; intensity: number; type?: string; when: string }[] = [];
-  const recentExercises: { exerciseId: string; when: string }[] = [];
-  for (const s of context.recentSessions.slice(0, 5)) {
-    for (const p of s.pain_check ?? []) {
-      recentPain.push({
-        location: p.location,
-        intensity: p.intensity,
-        type: p.type,
-        when: s.started_at.slice(0, 10),
-      });
-    }
-    for (const e of s.exercises_completed ?? []) {
-      recentExercises.push({
-        exerciseId: e.exerciseId,
-        when: s.started_at.slice(0, 10),
-      });
-    }
-  }
-  const compactContext = {
-    name: context.profile?.name ?? null,
-    curve_pattern: context.profile?.curve_type ?? null,
-    primary_apex: context.profile?.primary_curve_apex ?? null,
-    primary_lean: context.profile?.primary_curve_convex_side ?? null,
-    secondary_apex: context.profile?.secondary_curve_apex ?? null,
-    secondary_lean: context.profile?.secondary_curve_convex_side ?? null,
-    goal_text: context.profile?.goal_text ?? null,
-    sessions_last_7d: context.adherence.sessionsLast7Days,
-    recent_pain_logs: recentPain.slice(0, 8),
-    recent_exercises: recentExercises.slice(0, 8),
-    top_correlations: context.correlations.slice(0, 3).map((c) => ({
-      subject: c.subject,
-      object: c.object,
-      lag_days: c.lag_days,
-      r: Number(c.correlation_strength.toFixed(2)),
-    })),
-  };
+  const compactContext = buildChatContext(context);
 
   // Compact exercise pool — id, name, regions only. Description + tier are
   // dead weight for chat; the LLM picks by id and the system renders the
